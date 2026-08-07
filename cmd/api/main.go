@@ -46,6 +46,7 @@ func main() {
 
 	// Repositories & Services
 	userRepo := repository.NewUserRepository(dbPool)
+	menuRepo := repository.NewMenuRepository(dbPool)
 	rateLimiter := subscription.NewMemoryRateLimiter()
 	priceProvider := price.NewAIEstimateProvider(dbPool)
 
@@ -64,6 +65,7 @@ func main() {
 
 	// Handlers
 	onboardingHandler := handler.NewOnboardingHandler(userRepo)
+	menuSelectHandler := handler.NewMenuSelectHandler(menuRepo)
 	var menuHandler *handler.MenuHandler
 	if aiProvider != nil {
 		menuHandler = handler.NewMenuHandler(aiProvider, priceProvider, userRepo, rateLimiter)
@@ -122,6 +124,9 @@ func main() {
 
 	// Onboarding endpoint
 	api.Post("/onboarding", auth.RequireAuth(), onboardingHandler.HandleOnboarding)
+
+	// Menu select endpoint
+	api.Post("/menu/select", auth.RequireAuth(), menuSelectHandler.HandleSelectMenu)
 
 	// Menu generate endpoint
 	if menuHandler != nil {
