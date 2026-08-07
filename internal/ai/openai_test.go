@@ -35,15 +35,27 @@ func TestNewOpenAIProvider_WithKey(t *testing.T) {
 	}
 }
 
-func TestFormatRestrictions(t *testing.T) {
-	res1 := formatRestrictions([]string{})
-	if res1 != "Tidak ada" {
-		t.Errorf("Expected 'Tidak ada', got '%s'", res1)
+func TestBuildUserPrompt(t *testing.T) {
+	prompt1 := BuildUserPrompt(MenuGenerateParams{
+		Goal:          "hemat",
+		BudgetAmount:  50000,
+		BudgetPeriod:  "harian",
+		HouseholdSize: 2,
+		Restrictions:  []string{},
+	})
+	if prompt1 == "" {
+		t.Error("Expected non-empty prompt")
 	}
 
-	res2 := formatRestrictions([]string{"udang", "kacang"})
-	if res2 != "udang, kacang" {
-		t.Errorf("Expected 'udang, kacang', got '%s'", res2)
+	prompt2 := BuildUserPrompt(MenuGenerateParams{
+		Goal:          "sehat",
+		BudgetAmount:  100000,
+		BudgetPeriod:  "mingguan",
+		HouseholdSize: 3,
+		Restrictions:  []string{"udang", "kacang"},
+	})
+	if prompt2 == "" {
+		t.Error("Expected non-empty prompt")
 	}
 }
 

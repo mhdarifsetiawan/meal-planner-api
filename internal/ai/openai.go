@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strings"
 
 	openai "github.com/sashabaranov/go-openai"
 )
@@ -55,47 +54,8 @@ func NewOpenAIProviderWithClient(client *openai.Client, model string) *OpenAIPro
 }
 
 func (p *OpenAIProvider) GenerateMenu(ctx context.Context, params MenuGenerateParams) (*MenuOptions, error) {
-	systemPrompt := `Anda adalah ahli gizi dan koki profesional Indonesia.
-Tugas Anda adalah merekomendasikan 3 variasi menu masak harian khas Indonesia dalam bentuk JSON yang terstruktur.
-
-ATURAN STRICT:
-1. Kembalikan HANYA format JSON valid tanpa teks markdown pembuka/penutup.
-2. Setiap estimasi harga bahan dan total harga HARUS dalam integer Rupiah (tanpa desimal/koma).
-3. Sesuaikan dengan batasan pantangan/alergi dan target budget user.
-
-FORMAT JSON OUTPUT YANG WAJIB DIIKUTI:
-{
-  "options": [
-    {
-      "recipe_name": "Nama Masakan",
-      "description": "Deskripsi singkat masakan",
-      "estimated_total_price": 45000,
-      "goal_tags": ["hemat", "sehat"],
-      "ingredients": [
-        {
-          "name": "Bahan",
-          "quantity": "2",
-          "unit": "potong",
-          "estimated_price": 5000
-        }
-      ]
-    }
-  ]
-}`
-
-	userPrompt := fmt.Sprintf(`Target Goal: %s
-Budget Amount: Rp %d
-Budget Period: %s
-Jumlah Anggota Keluarga: %d orang
-Pantangan / Alergi: %s
-
-Berikan 3 opsi menu rekomendasi masakan harian Indonesia sesuai parameter di atas!`,
-		params.Goal,
-		params.BudgetAmount,
-		params.BudgetPeriod,
-		params.HouseholdSize,
-		formatRestrictions(params.Restrictions),
-	)
+	systemPrompt := BuildSystemPrompt()
+	userPrompt := BuildUserPrompt(params)
 
 	req := openai.ChatCompletionRequest{
 		Model: p.model,
@@ -131,12 +91,9 @@ Berikan 3 opsi menu rekomendasi masakan harian Indonesia sesuai parameter di ata
 		return nil, fmt.Errorf("failed to unmarshal OpenAI response JSON: %w", err)
 	}
 
-	return &menuOpts, nil
-}
-
-func formatRestrictions(restrictions []string) string {
-	if len(restrictions) == 0 {
-		return "Tidak ada"
+	if err := ValidateMenuOptions(&menuOpts); err != nil {
+		return nil, fmt.Errorf("AI response failed schema validation: %w", err)
 	}
-	return strings.Join(restrictions, ", ")
+
+	return &menuOpts, nil
 }
