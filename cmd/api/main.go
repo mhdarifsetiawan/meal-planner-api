@@ -163,8 +163,12 @@ func main() {
 	admin.Delete("/price-watch/items/:id", adminPWHandler.HandleDeleteItem)
 	admin.Post("/price-watch/run-consensus", adminPWHandler.HandleRunConsensus)
 
-	// Price Watch Submission endpoint
+	// Price Watch User endpoints
+	userPWHandler := handler.NewUserPriceWatchHandler(pwRepo)
 	pwSubHandler := handler.NewPriceWatchSubmissionHandler(pwRepo, userRepo)
+
+	api.Get("/price-watch/campaigns/active", auth.RequireAuth(), userPWHandler.HandleGetActiveCampaigns)
+	api.Get("/price-watch/submissions/me", auth.RequireAuth(), userPWHandler.HandleGetUserSubmissions)
 	api.Post("/price-watch/submissions", auth.RequireAuth(), pwSubHandler.HandleSubmitPrice)
 
 	// Menu generate endpoint

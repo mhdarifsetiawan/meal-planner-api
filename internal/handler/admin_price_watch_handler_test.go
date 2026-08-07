@@ -108,6 +108,14 @@ func (m *MockPriceWatchRepository) CreateSubmission(ctx context.Context, sub *mo
 	return nil
 }
 
+func (m *MockPriceWatchRepository) GetActiveCampaignsWithItems(ctx context.Context) ([]model.PriceWatchCampaign, error) {
+	return m.GetCampaigns(ctx, false)
+}
+
+func (m *MockPriceWatchRepository) GetUserSubmissions(ctx context.Context, userID string) ([]model.UserPriceSubmissionDetail, error) {
+	return []model.UserPriceSubmissionDetail{}, nil
+}
+
 func setupAdminPriceWatchTestApp(repo *MockPriceWatchRepository) *fiber.App {
 	app := fiber.New()
 	h := NewAdminPriceWatchHandler(repo, nil)

@@ -29,6 +29,8 @@ type PriceWatchRepository interface {
 	DeleteItem(ctx context.Context, id int) error
 
 	CreateSubmission(ctx context.Context, sub *model.PriceSubmission) error
+	GetActiveCampaignsWithItems(ctx context.Context) ([]model.PriceWatchCampaign, error)
+	GetUserSubmissions(ctx context.Context, userID string) ([]model.UserPriceSubmissionDetail, error)
 }
 
 type pgxPriceWatchRepository struct {
@@ -283,4 +285,90 @@ func (r *pgxPriceWatchRepository) CreateSubmission(ctx context.Context, sub *mod
 	sub.Status = "pending"
 
 	return nil
+}
+
+func (r *pgxPriceWatchRepository) GetActiveCampaignsWithItems(ctx context.Context) ([]model.PriceWatchCampaign, error) {
+	if r.db == nil {
+		return nil, fmt.Errorf("database pool is nil")
+	}
+
+	campaigns, err := r.GetCampaigns(ctx, false) // is_active = true only
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range campaigns {
+		c := &campaigns[i]
+		itemQuery := `
+			SELECT id, campaign_id, ingredient_name, unit, icon_url, display_order, is_active
+			FROM price_watch_items
+			WHERE campaign_id = $1 AND is_active = true
+			ORDER BY display_order ASC, id ASC
+		`
+		rows, err := r.db.Query(ctx, itemQuery, c.ID)
+		if err == nil {
+			var items []model.PriceWatchItem
+			for rows.Next() {
+				var item model.PriceWatchItem
+				_ = rows.Scan(&item.ID, &item.CampaignID, &item.IngredientName, &item.Unit, &item.IconURL, &item.DisplayOrder, &item.IsActive)
+				items = append(items, item)
+			}
+			rows.Close()
+			if items == nil {
+				items = []model.PriceWatchItem{}
+			}
+			c.Items = items
+		}
+	}
+
+	return campaigns, nil
+}
+
+func (r *pgxPriceWatchRepository) GetUserSubmissions(ctx context.Context, userID string) ([]model.UserPriceSubmissionDetail, error) {
+	if r.db == nil {
+		return nil, fmt.Errorf("database pool is nil")
+	}
+
+	query := `
+		SELECT ps.id, ps.watch_item_id, pwi.ingredient_name, pwi.unit, pwc.title,
+		       ps.city_id, ps.submitted_price, ps.status, ps.validated_at, ps.created_at
+		FROM price_submissions ps
+		JOIN price_watch_items pwi ON pwi.id = ps.watch_item_id
+		JOIN price_watch_campaigns pwc ON pwc.id = pwi.campaign_id
+		WHERE ps.user_id = $1
+		ORDER BY ps.created_at DESC
+	`
+
+	rows, err := r.db.Query(ctx, query, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query user submissions: %w", err)
+	}
+	defer rows.Close()
+
+	var details []model.UserPriceSubmissionDetail
+	for rows.Next() {
+		var d model.UserPriceSubmissionDetail
+		err := rows.Scan(
+			&d.ID,
+			&d.WatchItemID,
+			&d.IngredientName,
+			&d.Unit,
+			&d.CampaignTitle,
+			&d.CityID,
+			&d.SubmittedPrice,
+			&d.Status,
+			&d.ValidatedAt,
+			&d.CreatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan submission detail: %w", err)
+		}
+		details = append(details, d)
+	}
+
+	if details == nil {
+		details = []model.UserPriceSubmissionDetail{}
+	}
+
+	return details, nil
 }

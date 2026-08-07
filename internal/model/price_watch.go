@@ -33,3 +33,16 @@ type PriceSubmission struct {
 	ValidatedAt    *time.Time `json:"validated_at,omitempty"`
 	CreatedAt      time.Time  `json:"created_at"`
 }
+
+type UserPriceSubmissionDetail struct {
+	ID             int        `json:"id"`
+	WatchItemID    int        `json:"watch_item_id"`
+	IngredientName string     `json:"ingredient_name"`
+	Unit           string     `json:"unit"`
+	CampaignTitle  string     `json:"campaign_title"`
+	CityID         int        `json:"city_id"`
+	SubmittedPrice int        `json:"submitted_price"`
+	Status         string     `json:"status"`
+	ValidatedAt    *time.Time `json:"validated_at,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+}
