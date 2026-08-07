@@ -4,6 +4,8 @@ import (
 	"log"
 	"os"
 
+	"meal-planner-api/internal/auth"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
@@ -52,10 +54,20 @@ func main() {
 		})
 	})
 
-	// TODO: daftarkan route grup di sini seiring development
-	// api := app.Group("/api/v1")
-	// handler.RegisterAuthRoutes(api, ...)
-	// handler.RegisterMenuRoutes(api, ...)
+	api := app.Group("/api/v1")
+
+	// Pre-route me / profile untuk test auth middleware
+	api.Get("/me", auth.RequireAuth(), func(c *fiber.Ctx) error {
+		userID, _ := auth.GetUserID(c)
+		email := auth.GetUserEmail(c)
+		return c.JSON(fiber.Map{
+			"data": fiber.Map{
+				"user_id": userID,
+				"email":   email,
+			},
+			"error": nil,
+		})
+	})
 
 	port := os.Getenv("PORT")
 	if port == "" {
