@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"meal-planner-api/internal/auth"
+	"meal-planner-api/internal/job"
 	"meal-planner-api/internal/model"
 	"meal-planner-api/internal/repository"
 
@@ -12,11 +13,15 @@ import (
 )
 
 type AdminPriceWatchHandler struct {
-	repo repository.PriceWatchRepository
+	repo         repository.PriceWatchRepository
+	consensusJob *job.ConsensusJob
 }
 
-func NewAdminPriceWatchHandler(repo repository.PriceWatchRepository) *AdminPriceWatchHandler {
-	return &AdminPriceWatchHandler{repo: repo}
+func NewAdminPriceWatchHandler(repo repository.PriceWatchRepository, consensusJob *job.ConsensusJob) *AdminPriceWatchHandler {
+	return &AdminPriceWatchHandler{
+		repo:         repo,
+		consensusJob: consensusJob,
+	}
 }
 
 type CreateCampaignRequest struct {
@@ -328,6 +333,32 @@ func (h *AdminPriceWatchHandler) HandleDeleteItem(c *fiber.Ctx) error {
 
 	return c.Status(http.StatusOK).JSON(fiber.Map{
 		"data":  fiber.Map{"message": "Item deleted successfully"},
+		"error": nil,
+	})
+}
+
+func (h *AdminPriceWatchHandler) HandleRunConsensus(c *fiber.Ctx) error {
+	if h.consensusJob == nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"data": nil,
+			"error": fiber.Map{
+				"message": "Consensus job is not initialized",
+			},
+		})
+	}
+
+	summary, err := h.consensusJob.RunConsensusValidation(c.Context(), 3, 15.0)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"data": nil,
+			"error": fiber.Map{
+				"message": "Consensus job execution failed: " + err.Error(),
+			},
+		})
+	}
+
+	return c.Status(http.StatusOK).JSON(fiber.Map{
+		"data":  summary,
 		"error": nil,
 	})
 }

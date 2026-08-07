@@ -8,6 +8,7 @@ import (
 	"meal-planner-api/internal/ai"
 	"meal-planner-api/internal/auth"
 	"meal-planner-api/internal/handler"
+	"meal-planner-api/internal/job"
 	"meal-planner-api/internal/payment"
 	"meal-planner-api/internal/price"
 	"meal-planner-api/internal/repository"
@@ -148,7 +149,8 @@ func main() {
 
 	// Admin Price Watch endpoints
 	pwRepo := repository.NewPriceWatchRepository(dbPool)
-	adminPWHandler := handler.NewAdminPriceWatchHandler(pwRepo)
+	consensusJob := job.NewConsensusJob(dbPool)
+	adminPWHandler := handler.NewAdminPriceWatchHandler(pwRepo, consensusJob)
 
 	admin := api.Group("/admin", auth.RequireAuth(), auth.RequireAdmin())
 	admin.Post("/price-watch/campaigns", adminPWHandler.HandleCreateCampaign)
@@ -159,6 +161,7 @@ func main() {
 	admin.Post("/price-watch/campaigns/:id/items", adminPWHandler.HandleCreateItem)
 	admin.Put("/price-watch/items/:id", adminPWHandler.HandleUpdateItem)
 	admin.Delete("/price-watch/items/:id", adminPWHandler.HandleDeleteItem)
+	admin.Post("/price-watch/run-consensus", adminPWHandler.HandleRunConsensus)
 
 	// Price Watch Submission endpoint
 	pwSubHandler := handler.NewPriceWatchSubmissionHandler(pwRepo, userRepo)

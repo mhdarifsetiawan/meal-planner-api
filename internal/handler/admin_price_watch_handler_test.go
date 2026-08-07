@@ -110,7 +110,7 @@ func (m *MockPriceWatchRepository) CreateSubmission(ctx context.Context, sub *mo
 
 func setupAdminPriceWatchTestApp(repo *MockPriceWatchRepository) *fiber.App {
 	app := fiber.New()
-	h := NewAdminPriceWatchHandler(repo)
+	h := NewAdminPriceWatchHandler(repo, nil)
 
 	app.Use(func(c *fiber.Ctx) error {
 		userID := c.Get("Test-User-ID")
