@@ -1,14 +1,18 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 
 	"meal-planner-api/internal/auth"
+	"meal-planner-api/internal/handler"
+	"meal-planner-api/internal/repository"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 )
 
@@ -17,6 +21,31 @@ func main() {
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found, using system environment variables")
 	}
+
+	// Database Connection Pool
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL == "" {
+		dbURL = "postgres://postgres:postgres@localhost:5434/masakapa?sslmode=disable"
+	}
+
+	ctx := context.Background()
+	dbPool, err := pgxpool.New(ctx, dbURL)
+	if err != nil {
+		log.Printf("Warning: Failed to create DB pool: %v", err)
+	} else {
+		defer dbPool.Close()
+		if err := dbPool.Ping(ctx); err != nil {
+			log.Printf("Warning: DB ping failed: %v", err)
+		} else {
+			log.Println("✅ Connected to PostgreSQL database")
+		}
+	}
+
+	// Repositories
+	userRepo := repository.NewUserRepository(dbPool)
+
+	// Handlers
+	onboardingHandler := handler.NewOnboardingHandler(userRepo)
 
 	app := fiber.New(fiber.Config{
 		AppName: "MasakApa API v0.1.0",
@@ -68,6 +97,9 @@ func main() {
 			"error": nil,
 		})
 	})
+
+	// Onboarding endpoint
+	api.Post("/onboarding", auth.RequireAuth(), onboardingHandler.HandleOnboarding)
 
 	port := os.Getenv("PORT")
 	if port == "" {
