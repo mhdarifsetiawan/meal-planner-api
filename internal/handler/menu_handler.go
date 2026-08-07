@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"meal-planner-api/internal/ai"
@@ -20,6 +21,7 @@ type MenuHandler struct {
 	aiProvider    ai.AIProvider
 	priceProvider price.PriceProvider
 	userRepo      repository.UserRepository
+	subRepo       repository.SubscriptionRepository
 	rateLimiter   subscription.RateLimiter
 }
 
@@ -27,12 +29,14 @@ func NewMenuHandler(
 	aiProvider ai.AIProvider,
 	priceProvider price.PriceProvider,
 	userRepo repository.UserRepository,
+	subRepo repository.SubscriptionRepository,
 	rateLimiter subscription.RateLimiter,
 ) *MenuHandler {
 	return &MenuHandler{
 		aiProvider:    aiProvider,
 		priceProvider: priceProvider,
 		userRepo:      userRepo,
+		subRepo:       subRepo,
 		rateLimiter:   rateLimiter,
 	}
 }
@@ -50,8 +54,15 @@ func (h *MenuHandler) HandleGenerateMenu(c *fiber.Ctx) error {
 
 	ctx := c.Context()
 
-	// 1. Rate limiting check
-	allowed, currentCount, err := h.rateLimiter.Allow(ctx, userID, DefaultFreeDailyLimit)
+	// 1. Dynamic Rate limiting check based on user subscription plan features
+	dailyLimit := DefaultFreeDailyLimit
+	if h.subRepo != nil {
+		if limit, lErr := h.subRepo.GetUserDailyLimit(ctx, userID); lErr == nil && limit > 0 {
+			dailyLimit = limit
+		}
+	}
+
+	allowed, currentCount, err := h.rateLimiter.Allow(ctx, userID, dailyLimit)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"data": nil,
@@ -65,10 +76,10 @@ func (h *MenuHandler) HandleGenerateMenu(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
 			"data": nil,
 			"error": fiber.Map{
-				"message": "Rate limit exceeded: free tier limit is 3 menu generations per day. Please upgrade to Premium.",
+				"message": fmt.Sprintf("Rate limit exceeded: your current plan limit is %d menu generations per day. Please upgrade to Premium.", dailyLimit),
 				"code":    "RATE_LIMIT_EXCEEDED",
 				"current": currentCount,
-				"max":     DefaultFreeDailyLimit,
+				"max":     dailyLimit,
 			},
 		})
 	}

@@ -76,7 +76,7 @@ func main() {
 	subHandler := handler.NewSubscriptionHandler(subRepo, dummyPayment)
 	var menuHandler *handler.MenuHandler
 	if aiProvider != nil {
-		menuHandler = handler.NewMenuHandler(aiProvider, priceProvider, userRepo, rateLimiter)
+		menuHandler = handler.NewMenuHandler(aiProvider, priceProvider, userRepo, subRepo, rateLimiter)
 	}
 
 	app := fiber.New(fiber.Config{

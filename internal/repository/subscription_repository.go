@@ -18,6 +18,7 @@ type SubscriptionRepository interface {
 	GetSubscriptionPlans(ctx context.Context) ([]model.SubscriptionPlan, error)
 	GetSubscriptionPlanByName(ctx context.Context, name string) (*model.SubscriptionPlan, error)
 	CreateUserSubscriptionTx(ctx context.Context, userID string, plan *model.SubscriptionPlan, couponID *int, amount int, gateway string, gatewayRef string) (*model.UserSubscriptionResult, error)
+	GetUserDailyLimit(ctx context.Context, userID string) (int, error)
 }
 
 type pgxSubscriptionRepository struct {
@@ -159,4 +160,39 @@ func (r *pgxSubscriptionRepository) CreateUserSubscriptionTx(
 		StartedAt:      startedAt,
 		EndsAt:         endsAt,
 	}, nil
+}
+
+func (r *pgxSubscriptionRepository) GetUserDailyLimit(ctx context.Context, userID string) (int, error) {
+	if r.db == nil {
+		return 3, nil
+	}
+
+	query := `
+		SELECT (sp.features->>'max_generate_per_day')::int
+		FROM user_subscriptions us
+		JOIN subscription_plans sp ON sp.id = us.plan_id
+		WHERE us.user_id = $1 AND us.status = 'active' AND (us.ends_at IS NULL OR us.ends_at > NOW())
+		ORDER BY us.started_at DESC
+		LIMIT 1
+	`
+
+	var limit int
+	err := r.db.QueryRow(ctx, query, userID).Scan(&limit)
+	if err == nil && limit > 0 {
+		return limit, nil
+	}
+
+	// Fallback to free plan feature limit
+	freeQuery := `
+		SELECT (features->>'max_generate_per_day')::int
+		FROM subscription_plans
+		WHERE LOWER(name) = 'free' AND is_active = true
+		LIMIT 1
+	`
+	_ = r.db.QueryRow(ctx, freeQuery).Scan(&limit)
+	if limit <= 0 {
+		limit = 3
+	}
+
+	return limit, nil
 }

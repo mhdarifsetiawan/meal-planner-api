@@ -67,6 +67,10 @@ func (m *MockSubscriptionRepository) CreateUserSubscriptionTx(
 	}, nil
 }
 
+func (m *MockSubscriptionRepository) GetUserDailyLimit(ctx context.Context, userID string) (int, error) {
+	return 999, nil
+}
+
 func setupSubscriptionTestApp(subRepo *MockSubscriptionRepository, payProvider payment.PaymentProvider) *fiber.App {
 	app := fiber.New()
 	h := NewSubscriptionHandler(subRepo, payProvider)
