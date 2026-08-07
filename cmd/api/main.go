@@ -56,9 +56,11 @@ func main() {
 	priceProvider := price.NewAIEstimateProvider(dbPool)
 	dummyPayment := payment.NewDummyPaymentProvider(0)
 
-	// AI Provider Initialization (Default: OpenAI)
+	// AI Provider Initialization (Default: OpenAI -> Groq)
 	var aiProvider ai.AIProvider
 	openAIKey := os.Getenv("AI_PROVIDER_API_KEY_OPENAI")
+	groqKey := os.Getenv("AI_PROVIDER_API_KEY_GROQ")
+
 	if openAIKey != "" {
 		provider, err := ai.NewOpenAIProvider(openAIKey, "")
 		if err != nil {
@@ -66,6 +68,14 @@ func main() {
 		} else {
 			aiProvider = provider
 			log.Println("🤖 OpenAI Provider initialized")
+		}
+	} else if groqKey != "" {
+		provider, err := ai.NewGroqProvider(groqKey, "")
+		if err != nil {
+			log.Printf("Warning: Groq provider init error: %v", err)
+		} else {
+			aiProvider = provider
+			log.Println("🤖 Groq Provider initialized")
 		}
 	}
 
