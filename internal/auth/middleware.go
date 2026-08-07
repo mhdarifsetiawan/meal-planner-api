@@ -1,10 +1,18 @@
 package auth
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
+	"net/http"
 	"os"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
@@ -23,13 +31,100 @@ var (
 	ErrUserNotContext    = errors.New("user_id not found in context")
 )
 
+type JWKSKey struct {
+	Kid string `json:"kid"`
+	Kty string `json:"kty"`
+	Alg string `json:"alg"`
+	Crv string `json:"crv"`
+	X   string `json:"x"`
+	Y   string `json:"y"`
+}
+
+type JWKSResponse struct {
+	Keys []JWKSKey `json:"keys"`
+}
+
+var (
+	jwksCache     = make(map[string]*ecdsa.PublicKey)
+	jwksMutex     sync.RWMutex
+	lastJWKSFetch time.Time
+)
+
+func getECPublicKey(kid string) (*ecdsa.PublicKey, error) {
+	jwksMutex.RLock()
+	pubKey, exists := jwksCache[kid]
+	fetchNeeded := !exists || time.Since(lastJWKSFetch) > 1*time.Hour
+	jwksMutex.RUnlock()
+
+	if !fetchNeeded && pubKey != nil {
+		return pubKey, nil
+	}
+
+	jwksMutex.Lock()
+	defer jwksMutex.Unlock()
+
+	if pubKey, exists := jwksCache[kid]; exists && time.Since(lastJWKSFetch) <= 1*time.Hour {
+		return pubKey, nil
+	}
+
+	supabaseURL := os.Getenv("SUPABASE_URL")
+	if supabaseURL == "" {
+		supabaseURL = "https://dyswmejbdcrsrqpbukgy.supabase.co"
+	}
+	jwksURL := fmt.Sprintf("%s/auth/v1/.well-known/jwks.json", strings.TrimSuffix(supabaseURL, "/"))
+
+	resp, err := http.Get(jwksURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch JWKS: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("JWKS endpoint returned status %d", resp.StatusCode)
+	}
+
+	var jwks JWKSResponse
+	if err := json.NewDecoder(resp.Body).Decode(&jwks); err != nil {
+		return nil, fmt.Errorf("failed to decode JWKS: %w", err)
+	}
+
+	for _, key := range jwks.Keys {
+		if key.Kty == "EC" && key.X != "" && key.Y != "" {
+			xBytes, err := base64.RawURLEncoding.DecodeString(key.X)
+			if err != nil {
+				continue
+			}
+			yBytes, err := base64.RawURLEncoding.DecodeString(key.Y)
+			if err != nil {
+				continue
+			}
+			parsedKey := &ecdsa.PublicKey{
+				Curve: elliptic.P256(),
+				X:     new(big.Int).SetBytes(xBytes),
+				Y:     new(big.Int).SetBytes(yBytes),
+			}
+			jwksCache[key.Kid] = parsedKey
+		}
+	}
+	lastJWKSFetch = time.Now()
+
+	if targetKey, found := jwksCache[kid]; found {
+		return targetKey, nil
+	}
+	for _, k := range jwksCache {
+		return k, nil
+	}
+
+	return nil, fmt.Errorf("public key not found for kid %s", kid)
+}
+
 // SupabaseClaims represents standard claims embedded in Supabase Auth JWTs.
 type SupabaseClaims struct {
 	jwt.RegisteredClaims
-	Email       string                 `json:"email"`
-	AppMetadata map[string]interface{} `json:"app_metadata"`
+	Email        string                 `json:"email"`
+	AppMetadata  map[string]interface{} `json:"app_metadata"`
 	UserMetadata map[string]interface{} `json:"user_metadata"`
-	Role        string                 `json:"role"`
+	Role         string                 `json:"role"`
 }
 
 // RequireAuth returns a Fiber middleware that validates Supabase JWT from Authorization header.
@@ -40,15 +135,6 @@ func RequireAuth(jwtSecret ...string) fiber.Handler {
 			secret = jwtSecret[0]
 		} else {
 			secret = os.Getenv("SUPABASE_JWT_SECRET")
-		}
-
-		if secret == "" {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"data": nil,
-				"error": fiber.Map{
-					"message": "Server configuration error: SUPABASE_JWT_SECRET is missing",
-				},
-			})
 		}
 
 		authHeader := c.Get("Authorization")
@@ -75,10 +161,18 @@ func RequireAuth(jwtSecret ...string) fiber.Handler {
 		claims := &SupabaseClaims{}
 
 		token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
-			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			switch token.Method.(type) {
+			case *jwt.SigningMethodHMAC:
+				if secret == "" {
+					return nil, errors.New("SUPABASE_JWT_SECRET is missing for HS256 verification")
+				}
+				return []byte(secret), nil
+			case *jwt.SigningMethodECDSA:
+				kid, _ := token.Header["kid"].(string)
+				return getECPublicKey(kid)
+			default:
 				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 			}
-			return []byte(secret), nil
 		})
 
 		if err != nil || !token.Valid {
