@@ -161,3 +161,51 @@ func (h *OnboardingHandler) HandleOnboarding(c *fiber.Ctx) error {
 		"error": nil,
 	})
 }
+
+// HandleGetPreferences returns the authenticated user's saved preferences.
+func (h *OnboardingHandler) HandleGetPreferences(c *fiber.Ctx) error {
+	userID, err := auth.GetUserID(c)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"data": nil,
+			"error": fiber.Map{
+				"message": "Unauthorized: user_id missing from context",
+			},
+		})
+	}
+
+	ctx := c.Context()
+	pref, err := h.userRepo.GetUserPreferencesByUserID(ctx, userID)
+	if err != nil || pref == nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"data": nil,
+			"error": fiber.Map{
+				"message": "User preferences not found. Please complete onboarding first.",
+			},
+		})
+	}
+
+	user, _ := h.userRepo.GetUserByID(ctx, userID)
+	var cityID *int
+	if user != nil {
+		cityID = user.CityID
+	}
+
+	var restrictions []string
+	if len(pref.Restrictions) > 0 {
+		_ = json.Unmarshal(pref.Restrictions, &restrictions)
+	}
+
+	return c.JSON(fiber.Map{
+		"data": fiber.Map{
+			"user_id":        userID,
+			"goal":           pref.Goal,
+			"budget_amount":  pref.BudgetAmount,
+			"budget_period":  pref.BudgetPeriod,
+			"household_size": pref.HouseholdSize,
+			"restrictions":   restrictions,
+			"city_id":        cityID,
+		},
+		"error": nil,
+	})
+}

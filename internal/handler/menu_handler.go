@@ -143,16 +143,20 @@ func (h *MenuHandler) HandleGenerateMenu(c *fiber.Ctx) error {
 			totalPrice := 0
 			for j := range opt.Ingredients {
 				ing := &opt.Ingredients[j]
-				priceRes, pErr := h.priceProvider.GetIngredientPrice(ctx, ing.Name, cityID)
-				if pErr == nil && priceRes != nil && priceRes.Price > 0 {
-					ing.EstimatedPrice = priceRes.Price
-					ing.PriceSource = string(priceRes.Source)
-				} else if ing.PriceSource == "" {
+				// If AI didn't provide ingredient estimated price, fallback to PriceProvider catalog
+				if ing.EstimatedPrice <= 0 {
+					priceRes, pErr := h.priceProvider.GetIngredientPrice(ctx, ing.Name, cityID)
+					if pErr == nil && priceRes != nil && priceRes.Price > 0 {
+						ing.EstimatedPrice = priceRes.Price
+						ing.PriceSource = string(priceRes.Source)
+					}
+				}
+				if ing.PriceSource == "" {
 					ing.PriceSource = string(price.SourceAIEstimate)
 				}
 				totalPrice += ing.EstimatedPrice
 			}
-			if totalPrice > 0 {
+			if totalPrice > 0 && opt.EstimatedTotalPrice <= 0 {
 				opt.EstimatedTotalPrice = totalPrice
 			}
 		}

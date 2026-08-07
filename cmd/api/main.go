@@ -161,8 +161,9 @@ func main() {
 	// Public region endpoints (no auth needed for city list)
 	api.Get("/cities", regionHandler.HandleGetCities)
 
-	// Onboarding endpoint
+	// Onboarding & Preferences endpoints
 	api.Post("/onboarding", auth.RequireAuth(), onboardingHandler.HandleOnboarding)
+	api.Get("/preferences", auth.RequireAuth(), onboardingHandler.HandleGetPreferences)
 
 	// Menu select endpoint
 	api.Post("/menu/select", auth.RequireAuth(), menuSelectHandler.HandleSelectMenu)
