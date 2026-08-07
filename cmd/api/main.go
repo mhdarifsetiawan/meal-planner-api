@@ -160,6 +160,10 @@ func main() {
 	admin.Put("/price-watch/items/:id", adminPWHandler.HandleUpdateItem)
 	admin.Delete("/price-watch/items/:id", adminPWHandler.HandleDeleteItem)
 
+	// Price Watch Submission endpoint
+	pwSubHandler := handler.NewPriceWatchSubmissionHandler(pwRepo, userRepo)
+	api.Post("/price-watch/submissions", auth.RequireAuth(), pwSubHandler.HandleSubmitPrice)
+
 	// Menu generate endpoint
 	if menuHandler != nil {
 		api.Post("/menu/generate", auth.RequireAuth(), menuHandler.HandleGenerateMenu)

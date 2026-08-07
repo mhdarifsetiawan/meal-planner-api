@@ -24,8 +24,11 @@ type PriceWatchRepository interface {
 	DeleteCampaign(ctx context.Context, id int) error
 
 	CreateItem(ctx context.Context, item *model.PriceWatchItem) error
+	GetItemByID(ctx context.Context, id int) (*model.PriceWatchItem, error)
 	UpdateItem(ctx context.Context, item *model.PriceWatchItem) error
 	DeleteItem(ctx context.Context, id int) error
+
+	CreateSubmission(ctx context.Context, sub *model.PriceSubmission) error
 }
 
 type pgxPriceWatchRepository struct {
@@ -220,6 +223,30 @@ func (r *pgxPriceWatchRepository) UpdateItem(ctx context.Context, item *model.Pr
 	return nil
 }
 
+func (r *pgxPriceWatchRepository) GetItemByID(ctx context.Context, id int) (*model.PriceWatchItem, error) {
+	if r.db == nil {
+		return nil, fmt.Errorf("database pool is nil")
+	}
+
+	query := `
+		SELECT id, campaign_id, ingredient_name, unit, icon_url, display_order, is_active
+		FROM price_watch_items
+		WHERE id = $1
+	`
+
+	var item model.PriceWatchItem
+	err := r.db.QueryRow(ctx, query, id).
+		Scan(&item.ID, &item.CampaignID, &item.IngredientName, &item.Unit, &item.IconURL, &item.DisplayOrder, &item.IsActive)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrItemNotFound
+		}
+		return nil, fmt.Errorf("failed to get price watch item: %w", err)
+	}
+
+	return &item, nil
+}
+
 func (r *pgxPriceWatchRepository) DeleteItem(ctx context.Context, id int) error {
 	if r.db == nil {
 		return fmt.Errorf("database pool is nil")
@@ -233,6 +260,27 @@ func (r *pgxPriceWatchRepository) DeleteItem(ctx context.Context, id int) error 
 	if cmdTag.RowsAffected() == 0 {
 		return ErrItemNotFound
 	}
+
+	return nil
+}
+
+func (r *pgxPriceWatchRepository) CreateSubmission(ctx context.Context, sub *model.PriceSubmission) error {
+	if r.db == nil {
+		return fmt.Errorf("database pool is nil")
+	}
+
+	query := `
+		INSERT INTO price_submissions (watch_item_id, user_id, city_id, submitted_price, status, created_at)
+		VALUES ($1, $2, $3, $4, 'pending', NOW())
+		RETURNING id, created_at
+	`
+
+	err := r.db.QueryRow(ctx, query, sub.WatchItemID, sub.UserID, sub.CityID, sub.SubmittedPrice).
+		Scan(&sub.ID, &sub.CreatedAt)
+	if err != nil {
+		return fmt.Errorf("failed to insert price submission: %w", err)
+	}
+	sub.Status = "pending"
 
 	return nil
 }

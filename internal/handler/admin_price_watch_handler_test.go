@@ -85,11 +85,26 @@ func (m *MockPriceWatchRepository) UpdateItem(ctx context.Context, item *model.P
 	return nil
 }
 
+func (m *MockPriceWatchRepository) GetItemByID(ctx context.Context, id int) (*model.PriceWatchItem, error) {
+	item, ok := m.items[id]
+	if !ok {
+		return nil, repository.ErrItemNotFound
+	}
+	return item, nil
+}
+
 func (m *MockPriceWatchRepository) DeleteItem(ctx context.Context, id int) error {
 	if _, ok := m.items[id]; !ok {
 		return repository.ErrItemNotFound
 	}
 	delete(m.items, id)
+	return nil
+}
+
+func (m *MockPriceWatchRepository) CreateSubmission(ctx context.Context, sub *model.PriceSubmission) error {
+	sub.ID = m.nextID
+	m.nextID++
+	sub.Status = "pending"
 	return nil
 }
 

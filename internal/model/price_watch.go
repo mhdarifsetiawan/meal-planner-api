@@ -22,3 +22,14 @@ type PriceWatchItem struct {
 	DisplayOrder   int     `json:"display_order"`
 	IsActive       bool    `json:"is_active"`
 }
+
+type PriceSubmission struct {
+	ID             int        `json:"id"`
+	WatchItemID    int        `json:"watch_item_id"`
+	UserID         string     `json:"user_id"`
+	CityID         int        `json:"city_id"`
+	SubmittedPrice int        `json:"submitted_price"`
+	Status         string     `json:"status"` // "pending" | "validated" | "rejected"
+	ValidatedAt    *time.Time `json:"validated_at,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+}
