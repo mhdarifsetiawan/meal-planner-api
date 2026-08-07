@@ -105,10 +105,10 @@ func (r *pgxMenuRepository) CreateSelectedMenuAndShoppingList(
 	var shoppingListID int
 	queryShoppingList := `
 		INSERT INTO shopping_lists (user_id, meal_selection_id, items, created_at)
-		VALUES ($1, $2, $3, NOW())
+		VALUES ($1, $2, $3::jsonb, NOW())
 		RETURNING id
 	`
-	err = tx.QueryRow(ctx, queryShoppingList, userID, mealSelectionID, itemsJSON).Scan(&shoppingListID)
+	err = tx.QueryRow(ctx, queryShoppingList, userID, mealSelectionID, string(itemsJSON)).Scan(&shoppingListID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to insert shopping_list: %w", err)
 	}

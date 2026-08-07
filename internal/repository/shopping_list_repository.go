@@ -129,10 +129,10 @@ func (r *pgxShoppingListRepository) UpdateShoppingListItemChecklist(
 
 	queryUpdate := `
 		UPDATE shopping_lists
-		SET items = $3
+		SET items = $3::jsonb
 		WHERE id = $1 AND user_id = $2
 	`
-	_, err = tx.Exec(ctx, queryUpdate, id, userID, updatedItemsRaw)
+	_, err = tx.Exec(ctx, queryUpdate, id, userID, string(updatedItemsRaw))
 	if err != nil {
 		return nil, fmt.Errorf("failed to update shopping list items: %w", err)
 	}

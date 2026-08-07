@@ -96,6 +96,7 @@ func main() {
 	shoppingListHandler := handler.NewShoppingListHandler(shoppingListRepo)
 	historyHandler := handler.NewHistoryHandler(historyRepo)
 	subHandler := handler.NewSubscriptionHandler(subRepo, dummyPayment)
+	regionHandler := handler.NewRegionHandler(dbPool)
 	var menuHandler *handler.MenuHandler
 	if aiProvider != nil {
 		menuHandler = handler.NewMenuHandler(aiProvider, priceProvider, userRepo, subRepo, rateLimiter)
@@ -156,6 +157,9 @@ func main() {
 			"error": nil,
 		})
 	})
+
+	// Public region endpoints (no auth needed for city list)
+	api.Get("/cities", regionHandler.HandleGetCities)
 
 	// Onboarding endpoint
 	api.Post("/onboarding", auth.RequireAuth(), onboardingHandler.HandleOnboarding)
