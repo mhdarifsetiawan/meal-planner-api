@@ -82,10 +82,11 @@ func RequireAuth(jwtSecret ...string) fiber.Handler {
 		})
 
 		if err != nil || !token.Valid {
+			fmt.Printf("⚠️ JWT Auth Error: err=%v, token.Valid=%v\n", err, token != nil && token.Valid)
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 				"data": nil,
 				"error": fiber.Map{
-					"message": "Unauthorized: Invalid or expired token",
+					"message": fmt.Sprintf("Unauthorized: Invalid or expired token (%v)", err),
 				},
 			})
 		}
