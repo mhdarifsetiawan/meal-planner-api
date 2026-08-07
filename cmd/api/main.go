@@ -146,6 +146,20 @@ func main() {
 	// Subscription endpoint
 	api.Post("/subscription/subscribe", auth.RequireAuth(), subHandler.HandleSubscribe)
 
+	// Admin Price Watch endpoints
+	pwRepo := repository.NewPriceWatchRepository(dbPool)
+	adminPWHandler := handler.NewAdminPriceWatchHandler(pwRepo)
+
+	admin := api.Group("/admin", auth.RequireAuth(), auth.RequireAdmin())
+	admin.Post("/price-watch/campaigns", adminPWHandler.HandleCreateCampaign)
+	admin.Get("/price-watch/campaigns", adminPWHandler.HandleGetCampaigns)
+	admin.Get("/price-watch/campaigns/:id", adminPWHandler.HandleGetCampaignByID)
+	admin.Put("/price-watch/campaigns/:id", adminPWHandler.HandleUpdateCampaign)
+	admin.Delete("/price-watch/campaigns/:id", adminPWHandler.HandleDeleteCampaign)
+	admin.Post("/price-watch/campaigns/:id/items", adminPWHandler.HandleCreateItem)
+	admin.Put("/price-watch/items/:id", adminPWHandler.HandleUpdateItem)
+	admin.Delete("/price-watch/items/:id", adminPWHandler.HandleDeleteItem)
+
 	// Menu generate endpoint
 	if menuHandler != nil {
 		api.Post("/menu/generate", auth.RequireAuth(), menuHandler.HandleGenerateMenu)
