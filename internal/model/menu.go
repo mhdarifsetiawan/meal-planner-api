@@ -71,3 +71,14 @@ type ShoppingListDetail struct {
 	TotalEstimatedPrice int            `json:"total_estimated_price"`
 	CreatedAt           time.Time      `json:"created_at"`
 }
+
+type HistoryItem struct {
+	MealSelectionID     int       `json:"meal_selection_id"`
+	ShoppingListID      *int      `json:"shopping_list_id,omitempty"`
+	RecipeID            int       `json:"recipe_id"`
+	RecipeName          string    `json:"recipe_name"`
+	Description         string    `json:"description"`
+	SelectedDate        time.Time `json:"selected_date"`
+	TotalEstimatedPrice int       `json:"total_estimated_price"`
+	CreatedAt           time.Time `json:"created_at"`
+}

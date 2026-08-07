@@ -48,6 +48,7 @@ func main() {
 	userRepo := repository.NewUserRepository(dbPool)
 	menuRepo := repository.NewMenuRepository(dbPool)
 	shoppingListRepo := repository.NewShoppingListRepository(dbPool)
+	historyRepo := repository.NewHistoryRepository(dbPool)
 	rateLimiter := subscription.NewMemoryRateLimiter()
 	priceProvider := price.NewAIEstimateProvider(dbPool)
 
@@ -68,6 +69,7 @@ func main() {
 	onboardingHandler := handler.NewOnboardingHandler(userRepo)
 	menuSelectHandler := handler.NewMenuSelectHandler(menuRepo)
 	shoppingListHandler := handler.NewShoppingListHandler(shoppingListRepo)
+	historyHandler := handler.NewHistoryHandler(historyRepo)
 	var menuHandler *handler.MenuHandler
 	if aiProvider != nil {
 		menuHandler = handler.NewMenuHandler(aiProvider, priceProvider, userRepo, rateLimiter)
@@ -133,6 +135,9 @@ func main() {
 	// Shopping list endpoints
 	api.Get("/shopping-list/:id", auth.RequireAuth(), shoppingListHandler.HandleGetShoppingList)
 	api.Patch("/shopping-list/:id/item", auth.RequireAuth(), shoppingListHandler.HandleUpdateShoppingListItem)
+
+	// History endpoint
+	api.Get("/history", auth.RequireAuth(), historyHandler.HandleGetHistory)
 
 	// Menu generate endpoint
 	if menuHandler != nil {
