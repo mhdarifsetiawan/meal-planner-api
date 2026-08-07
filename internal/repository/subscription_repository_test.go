@@ -5,6 +5,8 @@ import (
 	"os"
 	"testing"
 
+	"meal-planner-api/internal/model"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -52,5 +54,29 @@ func TestSubscriptionRepository_GetPlans(t *testing.T) {
 	}
 	if premiumPlan.Name != "premium" {
 		t.Errorf("Expected plan name 'premium', got '%s'", premiumPlan.Name)
+	}
+
+	// 3. Test CreateUserSubscriptionTx
+	userRepo := NewUserRepository(dbPool)
+	testUserID := "00000000-0000-0000-0000-000000000004"
+	nameStr := "Sub Test User"
+	_ = userRepo.CreateUser(ctx, &model.User{
+		ID:    testUserID,
+		Email: "sub-test@example.com",
+		Name:  &nameStr,
+		Role:  "user",
+	})
+
+	res, err := repo.CreateUserSubscriptionTx(ctx, testUserID, premiumPlan, nil, 29000, "dummy", "dummy_ref_999")
+	if err != nil {
+		t.Fatalf("Failed to create user subscription tx: %v", err)
+	}
+
+	if res.SubscriptionID <= 0 {
+		t.Errorf("Expected positive subscription_id, got %d", res.SubscriptionID)
+	}
+
+	if res.Status != "active" {
+		t.Errorf("Expected status 'active', got '%s'", res.Status)
 	}
 }

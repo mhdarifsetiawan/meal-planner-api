@@ -8,6 +8,7 @@ import (
 	"meal-planner-api/internal/ai"
 	"meal-planner-api/internal/auth"
 	"meal-planner-api/internal/handler"
+	"meal-planner-api/internal/payment"
 	"meal-planner-api/internal/price"
 	"meal-planner-api/internal/repository"
 	"meal-planner-api/internal/subscription"
@@ -49,8 +50,10 @@ func main() {
 	menuRepo := repository.NewMenuRepository(dbPool)
 	shoppingListRepo := repository.NewShoppingListRepository(dbPool)
 	historyRepo := repository.NewHistoryRepository(dbPool)
+	subRepo := repository.NewSubscriptionRepository(dbPool)
 	rateLimiter := subscription.NewMemoryRateLimiter()
 	priceProvider := price.NewAIEstimateProvider(dbPool)
+	dummyPayment := payment.NewDummyPaymentProvider(0)
 
 	// AI Provider Initialization (Default: OpenAI)
 	var aiProvider ai.AIProvider
@@ -70,6 +73,7 @@ func main() {
 	menuSelectHandler := handler.NewMenuSelectHandler(menuRepo)
 	shoppingListHandler := handler.NewShoppingListHandler(shoppingListRepo)
 	historyHandler := handler.NewHistoryHandler(historyRepo)
+	subHandler := handler.NewSubscriptionHandler(subRepo, dummyPayment)
 	var menuHandler *handler.MenuHandler
 	if aiProvider != nil {
 		menuHandler = handler.NewMenuHandler(aiProvider, priceProvider, userRepo, rateLimiter)
@@ -138,6 +142,9 @@ func main() {
 
 	// History endpoint
 	api.Get("/history", auth.RequireAuth(), historyHandler.HandleGetHistory)
+
+	// Subscription endpoint
+	api.Post("/subscription/subscribe", auth.RequireAuth(), subHandler.HandleSubscribe)
 
 	// Menu generate endpoint
 	if menuHandler != nil {

@@ -24,3 +24,14 @@ type UserSubscription struct {
 	StartedAt time.Time  `json:"started_at"`
 	EndsAt    *time.Time `json:"ends_at,omitempty"`
 }
+
+type UserSubscriptionResult struct {
+	SubscriptionID int        `json:"subscription_id"`
+	PlanName       string     `json:"plan_name"`
+	Status         string     `json:"status"`
+	Amount         int        `json:"amount"`
+	PaymentGateway string     `json:"payment_gateway"`
+	GatewayRef     string     `json:"gateway_ref"`
+	StartedAt      time.Time  `json:"started_at"`
+	EndsAt         *time.Time `json:"ends_at,omitempty"`
+}
