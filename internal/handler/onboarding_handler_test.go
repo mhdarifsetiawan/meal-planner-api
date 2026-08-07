@@ -10,6 +10,7 @@ import (
 
 	"meal-planner-api/internal/auth"
 	"meal-planner-api/internal/model"
+	"meal-planner-api/internal/repository"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -54,7 +55,7 @@ func (m *MockUserRepository) UpsertUserPreferences(ctx context.Context, pref *mo
 func (m *MockUserRepository) GetUserPreferencesByUserID(ctx context.Context, userID string) (*model.UserPreference, error) {
 	p, ok := m.prefs[userID]
 	if !ok {
-		return nil, nil
+		return nil, repository.ErrUserPreferenceNotFound
 	}
 	return p, nil
 }
