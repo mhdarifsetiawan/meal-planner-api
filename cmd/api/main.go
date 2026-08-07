@@ -8,6 +8,7 @@ import (
 	"meal-planner-api/internal/ai"
 	"meal-planner-api/internal/auth"
 	"meal-planner-api/internal/handler"
+	"meal-planner-api/internal/price"
 	"meal-planner-api/internal/repository"
 	"meal-planner-api/internal/subscription"
 
@@ -46,6 +47,7 @@ func main() {
 	// Repositories & Services
 	userRepo := repository.NewUserRepository(dbPool)
 	rateLimiter := subscription.NewMemoryRateLimiter()
+	priceProvider := price.NewAIEstimateProvider(dbPool)
 
 	// AI Provider Initialization (Default: OpenAI)
 	var aiProvider ai.AIProvider
@@ -64,7 +66,7 @@ func main() {
 	onboardingHandler := handler.NewOnboardingHandler(userRepo)
 	var menuHandler *handler.MenuHandler
 	if aiProvider != nil {
-		menuHandler = handler.NewMenuHandler(aiProvider, userRepo, rateLimiter)
+		menuHandler = handler.NewMenuHandler(aiProvider, priceProvider, userRepo, rateLimiter)
 	}
 
 	app := fiber.New(fiber.Config{

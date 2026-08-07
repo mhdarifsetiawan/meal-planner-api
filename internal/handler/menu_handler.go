@@ -7,6 +7,7 @@ import (
 
 	"meal-planner-api/internal/ai"
 	"meal-planner-api/internal/auth"
+	"meal-planner-api/internal/price"
 	"meal-planner-api/internal/repository"
 	"meal-planner-api/internal/subscription"
 
@@ -16,16 +17,23 @@ import (
 const DefaultFreeDailyLimit = 3
 
 type MenuHandler struct {
-	aiProvider  ai.AIProvider
-	userRepo    repository.UserRepository
-	rateLimiter subscription.RateLimiter
+	aiProvider    ai.AIProvider
+	priceProvider price.PriceProvider
+	userRepo      repository.UserRepository
+	rateLimiter   subscription.RateLimiter
 }
 
-func NewMenuHandler(aiProvider ai.AIProvider, userRepo repository.UserRepository, rateLimiter subscription.RateLimiter) *MenuHandler {
+func NewMenuHandler(
+	aiProvider ai.AIProvider,
+	priceProvider price.PriceProvider,
+	userRepo repository.UserRepository,
+	rateLimiter subscription.RateLimiter,
+) *MenuHandler {
 	return &MenuHandler{
-		aiProvider:  aiProvider,
-		userRepo:    userRepo,
-		rateLimiter: rateLimiter,
+		aiProvider:    aiProvider,
+		priceProvider: priceProvider,
+		userRepo:      userRepo,
+		rateLimiter:   rateLimiter,
 	}
 }
 
@@ -85,6 +93,12 @@ func (h *MenuHandler) HandleGenerateMenu(c *fiber.Ctx) error {
 		})
 	}
 
+	// Fetch user record for city_id if present
+	var cityID *int
+	if user, uErr := h.userRepo.GetUserByID(ctx, userID); uErr == nil && user != nil {
+		cityID = user.CityID
+	}
+
 	// 3. Parse restrictions JSON
 	var restrictions []string
 	if len(pref.Restrictions) > 0 {
@@ -111,7 +125,29 @@ func (h *MenuHandler) HandleGenerateMenu(c *fiber.Ctx) error {
 		})
 	}
 
-	// 6. Increment generation count upon success
+	// 6. Enrich ingredient prices using PriceProvider if available
+	if h.priceProvider != nil && menuOpts != nil {
+		for i := range menuOpts.Options {
+			opt := &menuOpts.Options[i]
+			totalPrice := 0
+			for j := range opt.Ingredients {
+				ing := &opt.Ingredients[j]
+				priceRes, pErr := h.priceProvider.GetIngredientPrice(ctx, ing.Name, cityID)
+				if pErr == nil && priceRes != nil && priceRes.Price > 0 {
+					ing.EstimatedPrice = priceRes.Price
+					ing.PriceSource = string(priceRes.Source)
+				} else if ing.PriceSource == "" {
+					ing.PriceSource = string(price.SourceAIEstimate)
+				}
+				totalPrice += ing.EstimatedPrice
+			}
+			if totalPrice > 0 {
+				opt.EstimatedTotalPrice = totalPrice
+			}
+		}
+	}
+
+	// 7. Increment generation count upon success
 	_ = h.rateLimiter.Increment(ctx, userID)
 
 	return c.Status(http.StatusOK).JSON(fiber.Map{

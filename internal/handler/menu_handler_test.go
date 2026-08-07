@@ -10,6 +10,7 @@ import (
 	"meal-planner-api/internal/ai"
 	"meal-planner-api/internal/auth"
 	"meal-planner-api/internal/model"
+	"meal-planner-api/internal/price"
 	"meal-planner-api/internal/subscription"
 
 	"github.com/gofiber/fiber/v2"
@@ -29,7 +30,8 @@ func (m *MockAIProvider) GenerateMenu(ctx context.Context, params ai.MenuGenerat
 
 func setupMenuTestApp(aiProv ai.AIProvider, userRepo *MockUserRepository, rateLimiter subscription.RateLimiter) *fiber.App {
 	app := fiber.New()
-	handler := NewMenuHandler(aiProv, userRepo, rateLimiter)
+	priceProv := price.NewAIEstimateProvider(nil)
+	handler := NewMenuHandler(aiProv, priceProv, userRepo, rateLimiter)
 
 	app.Use(func(c *fiber.Ctx) error {
 		userID := c.Get("Test-User-ID")
