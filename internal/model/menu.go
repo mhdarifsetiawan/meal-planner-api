@@ -54,3 +54,20 @@ type SelectMenuResult struct {
 	ItemsCount          int       `json:"items_count"`
 	CreatedAt           time.Time `json:"created_at"`
 }
+
+type ShoppingItem struct {
+	IngredientName string `json:"ingredient_name"`
+	Quantity       string `json:"quantity"`
+	Unit           string `json:"unit"`
+	EstimatedPrice int    `json:"estimated_price"`
+	IsChecked      bool   `json:"is_checked"`
+}
+
+type ShoppingListDetail struct {
+	ID                  int            `json:"id"`
+	MealSelectionID     int            `json:"meal_selection_id"`
+	RecipeName          string         `json:"recipe_name"`
+	Items               []ShoppingItem `json:"items"`
+	TotalEstimatedPrice int            `json:"total_estimated_price"`
+	CreatedAt           time.Time      `json:"created_at"`
+}

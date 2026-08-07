@@ -47,6 +47,7 @@ func main() {
 	// Repositories & Services
 	userRepo := repository.NewUserRepository(dbPool)
 	menuRepo := repository.NewMenuRepository(dbPool)
+	shoppingListRepo := repository.NewShoppingListRepository(dbPool)
 	rateLimiter := subscription.NewMemoryRateLimiter()
 	priceProvider := price.NewAIEstimateProvider(dbPool)
 
@@ -66,6 +67,7 @@ func main() {
 	// Handlers
 	onboardingHandler := handler.NewOnboardingHandler(userRepo)
 	menuSelectHandler := handler.NewMenuSelectHandler(menuRepo)
+	shoppingListHandler := handler.NewShoppingListHandler(shoppingListRepo)
 	var menuHandler *handler.MenuHandler
 	if aiProvider != nil {
 		menuHandler = handler.NewMenuHandler(aiProvider, priceProvider, userRepo, rateLimiter)
@@ -127,6 +129,10 @@ func main() {
 
 	// Menu select endpoint
 	api.Post("/menu/select", auth.RequireAuth(), menuSelectHandler.HandleSelectMenu)
+
+	// Shopping list endpoints
+	api.Get("/shopping-list/:id", auth.RequireAuth(), shoppingListHandler.HandleGetShoppingList)
+	api.Patch("/shopping-list/:id/item", auth.RequireAuth(), shoppingListHandler.HandleUpdateShoppingListItem)
 
 	// Menu generate endpoint
 	if menuHandler != nil {
