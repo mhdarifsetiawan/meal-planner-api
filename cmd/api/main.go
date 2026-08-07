@@ -18,6 +18,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 )
@@ -35,15 +36,24 @@ func main() {
 	}
 
 	ctx := context.Background()
-	dbPool, err := pgxpool.New(ctx, dbURL)
+	var dbPool *pgxpool.Pool
+	poolConfig, err := pgxpool.ParseConfig(dbURL)
 	if err != nil {
-		log.Printf("Warning: Failed to create DB pool: %v", err)
+		log.Printf("Warning: Failed to parse DB URL: %v", err)
 	} else {
-		defer dbPool.Close()
-		if err := dbPool.Ping(ctx); err != nil {
-			log.Printf("Warning: DB ping failed: %v", err)
+		// Disable prepared statement caching to support PgBouncer transaction mode / Supabase Connection Pooler
+		poolConfig.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
+
+		dbPool, err = pgxpool.NewWithConfig(ctx, poolConfig)
+		if err != nil {
+			log.Printf("Warning: Failed to create DB pool: %v", err)
 		} else {
-			log.Println("✅ Connected to PostgreSQL database")
+			defer dbPool.Close()
+			if err := dbPool.Ping(ctx); err != nil {
+				log.Printf("Warning: DB ping failed: %v", err)
+			} else {
+				log.Println("✅ Connected to PostgreSQL database (PgBouncer compatible)")
+			}
 		}
 	}
 
