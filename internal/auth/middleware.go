@@ -69,7 +69,7 @@ func getECPublicKey(kid string) (*ecdsa.PublicKey, error) {
 
 	supabaseURL := os.Getenv("SUPABASE_URL")
 	if supabaseURL == "" {
-		supabaseURL = "https://dyswmejbdcrsrqpbukgy.supabase.co"
+		return nil, fmt.Errorf("SUPABASE_URL environment variable is not set")
 	}
 	jwksURL := fmt.Sprintf("%s/auth/v1/.well-known/jwks.json", strings.TrimSuffix(supabaseURL, "/"))
 
