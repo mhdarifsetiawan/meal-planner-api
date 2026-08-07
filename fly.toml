@@ -1,0 +1,37 @@
+# fly.toml — Konfigurasi Fly.io untuk MasakApa API
+# Generated for: meal-planner-api
+
+app = "masakapa-api"
+primary_region = "sin"   # Singapore — dekat dengan Supabase ap-southeast-2
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8080"
+  ENV  = "production"
+
+[http_service]
+  internal_port       = 8080
+  force_https         = true
+  auto_stop_machines  = true
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [http_service.concurrency]
+    type       = "connections"
+    hard_limit = 100
+    soft_limit = 80
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus     = 1
+  memory   = "256mb"
+
+# Health check endpoint
+[[http_service.checks]]
+  grace_period  = "10s"
+  interval      = "30s"
+  method        = "GET"
+  timeout       = "5s"
+  path          = "/health"
