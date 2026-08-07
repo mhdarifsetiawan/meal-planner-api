@@ -122,7 +122,7 @@ func main() {
 	// Middleware global
 	app.Use(recover.New())
 	app.Use(cors.New(cors.Config{
-		AllowOrigins: "http://localhost:3000,http://localhost:3001,https://masakapa-api.fly.dev",
+		AllowOrigins: "http://localhost:3000,http://localhost:3001,https://masakapa-api.fly.dev,https://*.vercel.app",
 		AllowMethods: "GET,POST,PUT,PATCH,DELETE,OPTIONS",
 		AllowHeaders: "Origin,Content-Type,Accept,Authorization",
 	}))
