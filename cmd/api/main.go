@@ -15,6 +15,7 @@ import (
 	"meal-planner-api/internal/subscription"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -109,6 +110,11 @@ func main() {
 
 	// Middleware global
 	app.Use(recover.New())
+	app.Use(cors.New(cors.Config{
+		AllowOrigins: "http://localhost:3000,http://localhost:3001,https://masakapa-api.fly.dev",
+		AllowMethods: "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+		AllowHeaders: "Origin,Content-Type,Accept,Authorization",
+	}))
 	app.Use(logger.New(logger.Config{
 		Format: "${time} | ${status} | ${latency} | ${ip} | ${method} ${path}\n",
 	}))
