@@ -1,0 +1,39 @@
+# Binaries
+/bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go build artefacts
+*.o
+*.a
+*.test
+*.out
+vendor/
+
+# Go workspace file (tidak dicommit di repo individual)
+go.work
+go.work.sum
+
+# Environment variables — JANGAN commit .env asli
+.env
+!.env.example
+
+# IDE & editor
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Docker volumes (kalau pakai bind mount lokal)
+postgres_data/
+redis_data/
+
+# Logs
+*.log
+
+# Air live-reload
+tmp/
