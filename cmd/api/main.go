@@ -171,6 +171,11 @@ func main() {
 	api.Get("/price-watch/submissions/me", auth.RequireAuth(), userPWHandler.HandleGetUserSubmissions)
 	api.Post("/price-watch/submissions", auth.RequireAuth(), pwSubHandler.HandleSubmitPrice)
 
+	// User Credits endpoint
+	creditRepo := repository.NewCreditRepository(dbPool)
+	creditHandler := handler.NewCreditHandler(creditRepo)
+	api.Get("/credits/me", auth.RequireAuth(), creditHandler.HandleGetMyCredits)
+
 	// Menu generate endpoint
 	if menuHandler != nil {
 		api.Post("/menu/generate", auth.RequireAuth(), menuHandler.HandleGenerateMenu)
