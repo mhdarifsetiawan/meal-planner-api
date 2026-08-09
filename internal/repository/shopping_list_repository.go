@@ -19,7 +19,7 @@ var ErrShoppingItemNotFound = errors.New("shopping list item not found")
 type ShoppingListRepository interface {
 	GetShoppingListByID(ctx context.Context, id int, userID string) (*model.ShoppingListDetail, error)
 	UpdateShoppingListItemChecklist(ctx context.Context, id int, userID string, ingredientName string, isChecked bool) (*model.ShoppingItem, error)
-	UpdateShoppingListItemPrice(ctx context.Context, id int, userID string, ingredientName string, newPrice int, submitToCommunity bool) (*model.ShoppingItem, int, error)
+	UpdateShoppingListItemPrice(ctx context.Context, id int, userID string, ingredientName string, newPrice int, submitToCommunity bool) (*model.ShoppingItem, int, bool, error)
 }
 
 type pgxShoppingListRepository struct {
@@ -153,90 +153,86 @@ func (r *pgxShoppingListRepository) UpdateShoppingListItemPrice(
 	ingredientName string,
 	newPrice int,
 	submitToCommunity bool,
-) (*model.ShoppingItem, int, error) {
+) (*model.ShoppingItem, int, bool, error) {
+	actuallySubmitted := false
 	if r.db == nil {
-		return nil, 0, fmt.Errorf("database pool is nil")
+		return nil, 0, false, fmt.Errorf("database pool is nil")
 	}
 
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to begin transaction: %w", err)
+		return nil, 0, false, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
-		_ = tx.Rollback(ctx)
+		if err != nil {
+			_ = tx.Rollback(ctx)
+		}
 	}()
 
-	querySelect := `
-		SELECT sl.items, sl.meal_selection_id, u.city_id
+	// Get list ownership + city_id
+	var listUserID string
+	var cityID *int
+	var mealSelectionID int
+	err = tx.QueryRow(ctx, `
+		SELECT sl.user_id, sl.meal_selection_id, u.city_id
 		FROM shopping_lists sl
 		JOIN users u ON u.id = sl.user_id
-		WHERE sl.id = $1 AND sl.user_id = $2
-		FOR UPDATE OF sl
-	`
-
-	var itemsRaw []byte
-	var mealSelectionID int
-	var cityID *int
-
-	err = tx.QueryRow(ctx, querySelect, id, userID).Scan(&itemsRaw, &mealSelectionID, &cityID)
+		WHERE sl.id = $1
+	`, id).Scan(&listUserID, &mealSelectionID, &cityID)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, 0, ErrShoppingListNotFound
-		}
-		return nil, 0, fmt.Errorf("failed to lock shopping list for price update: %w", err)
+		return nil, 0, false, ErrShoppingListNotFound
+	}
+	if listUserID != userID {
+		return nil, 0, false, ErrShoppingListNotFound
 	}
 
-	var items []model.ShoppingItem
-	if len(itemsRaw) > 0 {
-		if err := json.Unmarshal(itemsRaw, &items); err != nil {
-			return nil, 0, fmt.Errorf("failed to unmarshal items: %w", err)
-		}
-	}
+	// Update item price directly via SQL and capture old price for ratio calculation
+	var updatedItem model.ShoppingItem
+	var oldPortionPrice int
+	// First fetch old price
+	_ = tx.QueryRow(ctx, `
+		SELECT COALESCE(estimated_price, 0)
+		FROM shopping_list_items
+		WHERE shopping_list_id = $1
+		  AND (LOWER(ingredient_name) = LOWER($2) OR LOWER(name) = LOWER($2))
+		LIMIT 1
+	`, id, ingredientName).Scan(&oldPortionPrice)
 
-	var updatedItem *model.ShoppingItem
-	found := false
-	newTotalEstimatedPrice := 0
-	oldPortionPrice := 0
-
-	for i := range items {
-		if items[i].IngredientName == ingredientName {
-			oldPortionPrice = items[i].EstimatedPrice
-			items[i].EstimatedPrice = newPrice
-			updatedItem = &items[i]
-			found = true
-		}
-		newTotalEstimatedPrice += items[i].EstimatedPrice
-	}
-
-	if !found {
-		return nil, 0, ErrShoppingItemNotFound
-	}
-
-	updatedItemsRaw, err := json.Marshal(items)
+	// Now UPDATE
+	err = tx.QueryRow(ctx, `
+		UPDATE shopping_list_items
+		SET estimated_price = $1
+		WHERE shopping_list_id = $2
+		  AND (LOWER(ingredient_name) = LOWER($3) OR LOWER(name) = LOWER($3))
+		RETURNING ingredient_name, quantity, unit, is_checked, estimated_price
+	`, newPrice, id, ingredientName).Scan(
+		&updatedItem.IngredientName,
+		&updatedItem.Quantity,
+		&updatedItem.Unit,
+		&updatedItem.IsChecked,
+		&updatedItem.EstimatedPrice,
+	)
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to marshal updated items: %w", err)
+		return nil, 0, false, ErrShoppingItemNotFound
 	}
 
-	// Update shopping_lists JSON items
-	queryUpdateSL := `
-		UPDATE shopping_lists
-		SET items = $3::jsonb
-		WHERE id = $1 AND user_id = $2
-	`
-	_, err = tx.Exec(ctx, queryUpdateSL, id, userID, string(updatedItemsRaw))
+	// Recalculate total from all items
+	var newTotalEstimatedPrice int
+	err = tx.QueryRow(ctx, `
+		SELECT COALESCE(SUM(estimated_price), 0)
+		FROM shopping_list_items
+		WHERE shopping_list_id = $1
+	`, id).Scan(&newTotalEstimatedPrice)
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to update shopping list items: %w", err)
+		return nil, 0, false, fmt.Errorf("failed to sum item prices: %w", err)
 	}
 
 	// Update meal_selections total price
-	queryUpdateMS := `
-		UPDATE meal_selections
-		SET total_estimated_price = $2
-		WHERE id = $1
-	`
-	_, err = tx.Exec(ctx, queryUpdateMS, mealSelectionID, newTotalEstimatedPrice)
+	_, err = tx.Exec(ctx, `
+		UPDATE meal_selections SET total_estimated_price = $2 WHERE id = $1
+	`, mealSelectionID, newTotalEstimatedPrice)
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to update meal selection total price: %w", err)
+		return nil, 0, false, fmt.Errorf("failed to update meal selection total price: %w", err)
 	}
 
 	// Option B: Local shopping list price edits DO NOT automatically insert into ingredient_price_log.
@@ -281,13 +277,16 @@ func (r *pgxShoppingListRepository) UpdateShoppingListItemPrice(
 				INSERT INTO price_submissions (watch_item_id, user_id, city_id, submitted_price, status, created_at)
 				VALUES ($1, $2, $3, $4, 'pending', NOW())
 			`
-			_, _ = tx.Exec(ctx, insertSubQuery, watchItemID, userID, *cityID, unitPriceToLog)
+			_, errInsert := tx.Exec(ctx, insertSubQuery, watchItemID, userID, *cityID, unitPriceToLog)
+			if errInsert == nil {
+				actuallySubmitted = true
+			}
 		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return nil, 0, fmt.Errorf("failed to commit price update transaction: %w", err)
+		return nil, 0, false, fmt.Errorf("failed to commit price update transaction: %w", err)
 	}
 
-	return updatedItem, newTotalEstimatedPrice, nil
+	return &updatedItem, newTotalEstimatedPrice, actuallySubmitted, nil
 }

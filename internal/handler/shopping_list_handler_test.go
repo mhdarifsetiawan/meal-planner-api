@@ -49,13 +49,13 @@ func (m *MockShoppingListRepository) UpdateShoppingListItemChecklist(ctx context
 	}, nil
 }
 
-func (m *MockShoppingListRepository) UpdateShoppingListItemPrice(ctx context.Context, id int, userID string, ingredientName string, newPrice int, submitToCommunity bool) (*model.ShoppingItem, int, error) {
+func (m *MockShoppingListRepository) UpdateShoppingListItemPrice(ctx context.Context, id int, userID string, ingredientName string, newPrice int, submitToCommunity bool) (*model.ShoppingItem, int, bool, error) {
 	if m.mockErr != nil {
-		return nil, 0, m.mockErr
+		return nil, 0, false, m.mockErr
 	}
 	if m.mockItem != nil {
 		m.mockItem.EstimatedPrice = newPrice
-		return m.mockItem, newPrice, nil
+		return m.mockItem, newPrice, submitToCommunity, nil
 	}
 	return &model.ShoppingItem{
 		IngredientName: ingredientName,
@@ -63,7 +63,7 @@ func (m *MockShoppingListRepository) UpdateShoppingListItemPrice(ctx context.Con
 		Unit:           "papan",
 		EstimatedPrice: newPrice,
 		IsChecked:      false,
-	}, newPrice, nil
+	}, newPrice, submitToCommunity, nil
 }
 
 func setupShoppingListTestApp(repo *MockShoppingListRepository) *fiber.App {
