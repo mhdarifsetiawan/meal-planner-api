@@ -337,6 +337,11 @@ func (h *AdminPriceWatchHandler) HandleDeleteItem(c *fiber.Ctx) error {
 	})
 }
 
+type runConsensusRequest struct {
+	MinSubmissions   int     `json:"min_submissions"`
+	TolerancePercent float64 `json:"tolerance_percent"`
+}
+
 func (h *AdminPriceWatchHandler) HandleRunConsensus(c *fiber.Ctx) error {
 	if h.consensusJob == nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -347,7 +352,22 @@ func (h *AdminPriceWatchHandler) HandleRunConsensus(c *fiber.Ctx) error {
 		})
 	}
 
-	summary, err := h.consensusJob.RunConsensusValidation(c.Context(), 3, 15.0)
+	var req runConsensusRequest
+	if err := c.BodyParser(&req); err != nil {
+		// Body bisa kosong, gunakan default
+		req = runConsensusRequest{}
+	}
+
+	minSubs := req.MinSubmissions
+	if minSubs <= 0 {
+		minSubs = 3 // default
+	}
+	tolerance := req.TolerancePercent
+	if tolerance <= 0 {
+		tolerance = 15.0 // default
+	}
+
+	summary, err := h.consensusJob.RunConsensusValidation(c.Context(), minSubs, tolerance)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"data": nil,
