@@ -12,8 +12,9 @@ import (
 )
 
 var (
-	ErrCampaignNotFound = errors.New("price watch campaign not found")
-	ErrItemNotFound     = errors.New("price watch item not found")
+	ErrCampaignNotFound   = errors.New("price watch campaign not found")
+	ErrItemNotFound       = errors.New("price watch item not found")
+	ErrSubmissionNotFound = errors.New("price submission not found")
 )
 
 type PriceWatchRepository interface {
@@ -32,6 +33,8 @@ type PriceWatchRepository interface {
 	GetActiveCampaignsWithItems(ctx context.Context) ([]model.PriceWatchCampaign, error)
 	GetUserSubmissions(ctx context.Context, userID string) ([]model.UserPriceSubmissionDetail, error)
 	GetAllSubmissions(ctx context.Context, cityID *int, status *string) ([]model.AdminSubmissionDetail, error)
+	UpdateSubmissionStatus(ctx context.Context, id int, status string) error
+	DeleteSubmission(ctx context.Context, id int) error
 	HasRecentSubmission(ctx context.Context, userID string, watchItemID int, cityID int) (bool, error)
 }
 
@@ -444,4 +447,47 @@ func (r *pgxPriceWatchRepository) HasRecentSubmission(ctx context.Context, userI
 	}
 
 	return exists, nil
+}
+
+func (r *pgxPriceWatchRepository) UpdateSubmissionStatus(ctx context.Context, id int, status string) error {
+	if r.db == nil {
+		return fmt.Errorf("database pool is nil")
+	}
+
+	query := `
+		UPDATE price_submissions
+		SET status = $1,
+		    validated_at = CASE WHEN $1 = 'validated' THEN NOW() ELSE validated_at END
+		WHERE id = $2
+	`
+
+	cmdTag, err := r.db.Exec(ctx, query, status, id)
+	if err != nil {
+		return fmt.Errorf("failed to update submission status: %w", err)
+	}
+
+	if cmdTag.RowsAffected() == 0 {
+		return ErrSubmissionNotFound
+	}
+
+	return nil
+}
+
+func (r *pgxPriceWatchRepository) DeleteSubmission(ctx context.Context, id int) error {
+	if r.db == nil {
+		return fmt.Errorf("database pool is nil")
+	}
+
+	query := `DELETE FROM price_submissions WHERE id = $1`
+
+	cmdTag, err := r.db.Exec(ctx, query, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete price submission: %w", err)
+	}
+
+	if cmdTag.RowsAffected() == 0 {
+		return ErrSubmissionNotFound
+	}
+
+	return nil
 }

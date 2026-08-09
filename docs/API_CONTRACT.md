@@ -133,6 +133,8 @@ PATCH /admin/price-watch/campaigns/:id
 POST  /admin/price-watch/items
 PATCH /admin/price-watch/items/:id
 GET   /admin/price-watch/submissions
+PATCH /admin/price-watch/submissions/:id/status
+DELETE /admin/price-watch/submissions/:id
 
 GET   /admin/subscription-plans
 PATCH /admin/subscription-plans/:id

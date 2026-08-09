@@ -120,6 +120,20 @@ func (m *MockPriceWatchRepository) GetAllSubmissions(ctx context.Context, cityID
 	return []model.AdminSubmissionDetail{}, nil
 }
 
+func (m *MockPriceWatchRepository) UpdateSubmissionStatus(ctx context.Context, id int, status string) error {
+	if id == 999 {
+		return repository.ErrSubmissionNotFound
+	}
+	return nil
+}
+
+func (m *MockPriceWatchRepository) DeleteSubmission(ctx context.Context, id int) error {
+	if id == 999 {
+		return repository.ErrSubmissionNotFound
+	}
+	return nil
+}
+
 func (m *MockPriceWatchRepository) HasRecentSubmission(ctx context.Context, userID string, watchItemID int, cityID int) (bool, error) {
 	return false, nil
 }
@@ -145,6 +159,8 @@ func setupAdminPriceWatchTestApp(repo *MockPriceWatchRepository) *fiber.App {
 	api.Post("/campaigns/:id/items", h.HandleCreateItem)
 	api.Put("/items/:id", h.HandleUpdateItem)
 	api.Delete("/items/:id", h.HandleDeleteItem)
+	api.Patch("/submissions/:id/status", h.HandleUpdateSubmissionStatus)
+	api.Delete("/submissions/:id", h.HandleDeleteSubmission)
 
 	return app
 }
@@ -202,5 +218,38 @@ func TestAdminPriceWatchHandler_CampaignCRUD(t *testing.T) {
 	}
 	if respItem.StatusCode != http.StatusCreated {
 		t.Errorf("Expected status 201 Created, got %d", respItem.StatusCode)
+	}
+}
+
+func TestAdminPriceWatchHandler_SubmissionsStatusAndDelete(t *testing.T) {
+	repo := NewMockPriceWatchRepository()
+	app := setupAdminPriceWatchTestApp(repo)
+
+	// 1. Update status to expired
+	body := UpdateSubmissionStatusRequest{Status: "expired"}
+	jsonBytes, _ := json.Marshal(body)
+
+	reqStatus := httptest.NewRequest("PATCH", "/api/v1/admin/price-watch/submissions/1/status", bytes.NewReader(jsonBytes))
+	reqStatus.Header.Set("Content-Type", "application/json")
+	reqStatus.Header.Set("Test-User-ID", "admin-uuid-1")
+
+	respStatus, err := app.Test(reqStatus)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	if respStatus.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200 OK, got %d", respStatus.StatusCode)
+	}
+
+	// 2. Delete submission
+	reqDelete := httptest.NewRequest("DELETE", "/api/v1/admin/price-watch/submissions/1", nil)
+	reqDelete.Header.Set("Test-User-ID", "admin-uuid-1")
+
+	respDelete, err := app.Test(reqDelete)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	if respDelete.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200 OK, got %d", respDelete.StatusCode)
 	}
 }

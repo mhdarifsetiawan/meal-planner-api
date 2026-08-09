@@ -192,6 +192,8 @@ func main() {
 	admin.Delete("/price-watch/items/:item_id", adminPWHandler.HandleDeleteItem)
 	admin.Post("/price-watch/run-consensus", adminPWHandler.HandleRunConsensus)
 	admin.Get("/price-watch/submissions", adminPWHandler.HandleGetAllSubmissions)
+	admin.Patch("/price-watch/submissions/:id/status", adminPWHandler.HandleUpdateSubmissionStatus)
+	admin.Delete("/price-watch/submissions/:id", adminPWHandler.HandleDeleteSubmission)
 
 	// Master Ingredients Admin endpoints
 	adminMasterIngredientHandler := handler.NewAdminMasterIngredientHandler(masterIngredientRepo)

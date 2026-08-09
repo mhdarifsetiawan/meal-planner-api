@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -408,6 +409,113 @@ func (h *AdminPriceWatchHandler) HandleGetAllSubmissions(c *fiber.Ctx) error {
 
 	return c.Status(http.StatusOK).JSON(fiber.Map{
 		"data":  subs,
+		"error": nil,
+	})
+}
+
+type UpdateSubmissionStatusRequest struct {
+	Status string `json:"status"`
+}
+
+func (h *AdminPriceWatchHandler) HandleUpdateSubmissionStatus(c *fiber.Ctx) error {
+	idStr := c.Params("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil || id <= 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"data": nil,
+			"error": fiber.Map{
+				"message": "Invalid submission ID parameter",
+			},
+		})
+	}
+
+	var req UpdateSubmissionStatusRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"data": nil,
+			"error": fiber.Map{
+				"message": "Invalid request body: " + err.Error(),
+			},
+		})
+	}
+
+	validStatuses := map[string]bool{
+		"pending":   true,
+		"validated": true,
+		"rejected":  true,
+		"expired":   true,
+	}
+
+	if !validStatuses[req.Status] {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"data": nil,
+			"error": fiber.Map{
+				"message": "Invalid status value. Allowed: pending, validated, rejected, expired",
+			},
+		})
+	}
+
+	if err := h.repo.UpdateSubmissionStatus(c.Context(), id, req.Status); err != nil {
+		if errors.Is(err, repository.ErrSubmissionNotFound) {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"data": nil,
+				"error": fiber.Map{
+					"message": "Price submission not found",
+				},
+			})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"data": nil,
+			"error": fiber.Map{
+				"message": "Failed to update submission status: " + err.Error(),
+			},
+		})
+	}
+
+	return c.Status(http.StatusOK).JSON(fiber.Map{
+		"data": fiber.Map{
+			"id":      id,
+			"status":  req.Status,
+			"message": "Submission status updated successfully",
+		},
+		"error": nil,
+	})
+}
+
+func (h *AdminPriceWatchHandler) HandleDeleteSubmission(c *fiber.Ctx) error {
+	idStr := c.Params("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil || id <= 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"data": nil,
+			"error": fiber.Map{
+				"message": "Invalid submission ID parameter",
+			},
+		})
+	}
+
+	if err := h.repo.DeleteSubmission(c.Context(), id); err != nil {
+		if errors.Is(err, repository.ErrSubmissionNotFound) {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"data": nil,
+				"error": fiber.Map{
+					"message": "Price submission not found",
+				},
+			})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"data": nil,
+			"error": fiber.Map{
+				"message": "Failed to delete submission: " + err.Error(),
+			},
+		})
+	}
+
+	return c.Status(http.StatusOK).JSON(fiber.Map{
+		"data": fiber.Map{
+			"id":      id,
+			"message": "Submission deleted successfully",
+		},
 		"error": nil,
 	})
 }
