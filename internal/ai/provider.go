@@ -20,6 +20,8 @@ type MenuIngredient struct {
 	Unit           string `json:"unit"`
 	EstimatedPrice int    `json:"estimated_price"`
 	PriceSource    string `json:"price_source,omitempty"`
+	UnitPrice      int    `json:"unit_price,omitempty"`
+	UnitStandard   string `json:"unit_standard,omitempty"`
 }
 
 // MenuOption represents a single recommended recipe menu.

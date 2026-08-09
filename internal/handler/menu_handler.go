@@ -214,6 +214,13 @@ func (h *MenuHandler) HandleGenerateMenu(c *fiber.Ctx) error {
 				cleanKey := strings.ToLower(strings.TrimSpace(ing.Name))
 				if batchPrices != nil {
 					if pRes, found := batchPrices[cleanKey]; found && pRes != nil && pRes.Price > 0 {
+						ing.UnitPrice = pRes.Price
+						if pRes.UnitStandard != "" {
+							ing.UnitStandard = pRes.UnitStandard
+						} else {
+							ing.UnitStandard = "kg"
+						}
+
 						if pRes.Source == price.SourceCrowdsource && pRes.BaselinePrice > 0 && ing.EstimatedPrice > 0 {
 							// Scale AI recipe portion price proportionally based on (crowdsource_unit_price / baseline_unit_price) ratio
 							ratio := float64(pRes.Price) / float64(pRes.BaselinePrice)

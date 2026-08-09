@@ -35,6 +35,7 @@ func (p *AIEstimateProvider) GetIngredientPrice(ctx context.Context, name string
 		var sourceStr string
 		var confidence float64
 		var baselinePrice int
+		var defaultUnit string
 
 		// Exact name match only - "Telur" != "Telur Ayam" (could be Telur Bebek, etc.)
 		query := `
@@ -42,7 +43,8 @@ func (p *AIEstimateProvider) GetIngredientPrice(ctx context.Context, name string
 				l.price, 
 				l.source, 
 				COALESCE(l.confidence_score, 0.8),
-				COALESCE(mi.baseline_price, l.price) AS baseline_price
+				COALESCE(mi.baseline_price, l.price) AS baseline_price,
+				COALESCE(mi.default_unit, 'kg') AS default_unit
 			FROM ingredient_price_log l
 			LEFT JOIN master_ingredients mi ON LOWER(mi.name) = LOWER(l.ingredient_name)
 			WHERE LOWER(l.ingredient_name) = LOWER($1)
@@ -52,13 +54,14 @@ func (p *AIEstimateProvider) GetIngredientPrice(ctx context.Context, name string
 				l.recorded_at DESC
 			LIMIT 1
 		`
-		err := p.db.QueryRow(ctx, query, cleanName, cityID).Scan(&priceVal, &sourceStr, &confidence, &baselinePrice)
+		err := p.db.QueryRow(ctx, query, cleanName, cityID).Scan(&priceVal, &sourceStr, &confidence, &baselinePrice, &defaultUnit)
 		if err == nil && priceVal > 0 {
 			return &IngredientPrice{
 				IngredientName:  cleanName,
 				CityID:          cityID,
 				Price:           priceVal,
 				BaselinePrice:   baselinePrice,
+				UnitStandard:    defaultUnit,
 				Source:          PriceSource(sourceStr),
 				ConfidenceScore: confidence,
 			}, nil
