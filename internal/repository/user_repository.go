@@ -36,7 +36,9 @@ func (r *pgxUserRepository) CreateUser(ctx context.Context, user *model.User) er
 		INSERT INTO users (id, email, name, city_id, role, created_at)
 		VALUES ($1, $2, $3, $4, COALESCE(NULLIF($5, ''), 'user'), NOW())
 		ON CONFLICT (id) DO UPDATE 
-		SET email = EXCLUDED.email, name = COALESCE(EXCLUDED.name, users.name)
+		SET email = EXCLUDED.email,
+		    name = COALESCE(EXCLUDED.name, users.name),
+		    city_id = COALESCE(EXCLUDED.city_id, users.city_id)
 		RETURNING role, created_at
 	`
 	err := r.db.QueryRow(ctx, query, user.ID, user.Email, user.Name, user.CityID, user.Role).
