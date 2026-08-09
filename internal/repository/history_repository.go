@@ -98,6 +98,7 @@ func (r *pgxHistoryRepository) GetHistoryByUserID(ctx context.Context, userID st
 		if err != nil {
 			return nil, 0, fmt.Errorf("failed to scan history row: %w", err)
 		}
+		item.ID = item.MealSelectionID
 		items = append(items, item)
 	}
 

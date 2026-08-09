@@ -73,6 +73,7 @@ type ShoppingListDetail struct {
 }
 
 type HistoryItem struct {
+	ID                  int       `json:"id"`
 	MealSelectionID     int       `json:"meal_selection_id"`
 	ShoppingListID      *int      `json:"shopping_list_id,omitempty"`
 	RecipeID            int       `json:"recipe_id"`
