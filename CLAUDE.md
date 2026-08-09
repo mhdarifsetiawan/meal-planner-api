@@ -55,7 +55,8 @@ Implementasi aktif: `OpenAIProvider`. Provider aktif ditentukan dari tabel `ai_p
 ### 2. PriceProvider (`internal/price`)
 ```go
 type PriceProvider interface {
-    GetPrice(ctx context.Context, ingredientName string, cityID int) (*PriceResult, error)
+    GetIngredientPrice(ctx context.Context, name string, cityID *int) (*IngredientPrice, error)
+    GetIngredientPricesBatch(ctx context.Context, names []string, cityID *int) (map[string]*IngredientPrice, error)
 }
 ```
 MVP: `AIEstimateProvider` aktif. `CrowdsourceProvider` mengambil data dari `ingredient_price_log` yang `source = "crowdsource"` — kalau ada data crowdsource valid untuk kombinasi ingredient+kota, prioritaskan ini di atas AI estimate.
