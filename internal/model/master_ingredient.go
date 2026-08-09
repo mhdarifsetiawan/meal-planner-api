@@ -3,12 +3,13 @@ package model
 import "time"
 
 type MasterIngredient struct {
-	ID          int       `json:"id"`
-	Category    string    `json:"category"`
-	Name        string    `json:"name"`
-	DefaultUnit string    `json:"default_unit"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID            int       `json:"id"`
+	Category      string    `json:"category"`
+	Name          string    `json:"name"`
+	DefaultUnit   string    `json:"default_unit"`
+	BaselinePrice int       `json:"baseline_price"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 type IngredientAlias struct {
@@ -24,16 +25,18 @@ type MasterIngredientWithAliases struct {
 }
 
 type CreateMasterIngredientRequest struct {
-	Category    string   `json:"category"`
-	Name        string   `json:"name"`
-	DefaultUnit string   `json:"default_unit"`
-	Aliases     []string `json:"aliases,omitempty"`
+	Category      string   `json:"category"`
+	Name          string   `json:"name"`
+	DefaultUnit   string   `json:"default_unit"`
+	BaselinePrice int      `json:"baseline_price,omitempty"`
+	Aliases       []string `json:"aliases,omitempty"`
 }
 
 type UpdateMasterIngredientRequest struct {
-	Category    string `json:"category"`
-	Name        string `json:"name"`
-	DefaultUnit string `json:"default_unit"`
+	Category      string `json:"category"`
+	Name          string `json:"name"`
+	DefaultUnit   string `json:"default_unit"`
+	BaselinePrice int    `json:"baseline_price,omitempty"`
 }
 
 type AddAliasRequest struct {

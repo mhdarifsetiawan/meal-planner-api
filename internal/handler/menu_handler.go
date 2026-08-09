@@ -175,9 +175,7 @@ func (h *MenuHandler) HandleGenerateMenu(c *fiber.Ctx) error {
 		var ingredientNames []string
 		for i := range menuOpts.Options {
 			for j := range menuOpts.Options[i].Ingredients {
-				if menuOpts.Options[i].Ingredients[j].EstimatedPrice <= 0 {
-					ingredientNames = append(ingredientNames, menuOpts.Options[i].Ingredients[j].Name)
-				}
+				ingredientNames = append(ingredientNames, menuOpts.Options[i].Ingredients[j].Name)
 			}
 		}
 
@@ -188,10 +186,14 @@ func (h *MenuHandler) HandleGenerateMenu(c *fiber.Ctx) error {
 			totalPrice := 0
 			for j := range opt.Ingredients {
 				ing := &opt.Ingredients[j]
-				if ing.EstimatedPrice <= 0 && batchPrices != nil {
-					if pRes, found := batchPrices[strings.ToLower(strings.TrimSpace(ing.Name))]; found && pRes != nil && pRes.Price > 0 {
-						ing.EstimatedPrice = pRes.Price
-						ing.PriceSource = string(pRes.Source)
+				cleanKey := strings.ToLower(strings.TrimSpace(ing.Name))
+				if batchPrices != nil {
+					if pRes, found := batchPrices[cleanKey]; found && pRes != nil && pRes.Price > 0 {
+						// Overwrite if source is crowdsource OR if AI returned estimatedPrice <= 0
+						if pRes.Source == price.SourceCrowdsource || ing.EstimatedPrice <= 0 {
+							ing.EstimatedPrice = pRes.Price
+							ing.PriceSource = string(pRes.Source)
+						}
 					}
 				}
 				if ing.PriceSource == "" {
@@ -199,7 +201,7 @@ func (h *MenuHandler) HandleGenerateMenu(c *fiber.Ctx) error {
 				}
 				totalPrice += ing.EstimatedPrice
 			}
-			if totalPrice > 0 && opt.EstimatedTotalPrice <= 0 {
+			if totalPrice > 0 {
 				opt.EstimatedTotalPrice = totalPrice
 			}
 		}

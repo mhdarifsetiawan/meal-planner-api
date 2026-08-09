@@ -50,7 +50,7 @@ func (r *pgxMasterIngredientRepository) GetAll(ctx context.Context, categoryQuer
 	}
 
 	query := fmt.Sprintf(`
-		SELECT id, category, name, default_unit, created_at, updated_at
+		SELECT id, category, name, default_unit, baseline_price, created_at, updated_at
 		FROM master_ingredients mi
 		WHERE %s
 		ORDER BY category ASC, name ASC
@@ -65,7 +65,7 @@ func (r *pgxMasterIngredientRepository) GetAll(ctx context.Context, categoryQuer
 	var result []model.MasterIngredientWithAliases
 	for rows.Next() {
 		var item model.MasterIngredientWithAliases
-		if err := rows.Scan(&item.ID, &item.Category, &item.Name, &item.DefaultUnit, &item.CreatedAt, &item.UpdatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.Category, &item.Name, &item.DefaultUnit, &item.BaselinePrice, &item.CreatedAt, &item.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan master ingredient: %w", err)
 		}
 		result = append(result, item)
@@ -111,12 +111,12 @@ func (r *pgxMasterIngredientRepository) GetByID(ctx context.Context, id int) (*m
 	}
 
 	query := `
-		SELECT id, category, name, default_unit, created_at, updated_at
+		SELECT id, category, name, default_unit, baseline_price, created_at, updated_at
 		FROM master_ingredients
 		WHERE id = $1
 	`
 	var item model.MasterIngredientWithAliases
-	err := r.db.QueryRow(ctx, query, id).Scan(&item.ID, &item.Category, &item.Name, &item.DefaultUnit, &item.CreatedAt, &item.UpdatedAt)
+	err := r.db.QueryRow(ctx, query, id).Scan(&item.ID, &item.Category, &item.Name, &item.DefaultUnit, &item.BaselinePrice, &item.CreatedAt, &item.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("master ingredient not found: %w", err)
 	}
@@ -158,14 +158,19 @@ func (r *pgxMasterIngredientRepository) Create(ctx context.Context, req model.Cr
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	baselinePrice := 10000
+	if req.BaselinePrice > 0 {
+		baselinePrice = req.BaselinePrice
+	}
+
 	query := `
-		INSERT INTO master_ingredients (category, name, default_unit, created_at, updated_at)
-		VALUES ($1, $2, $3, NOW(), NOW())
-		RETURNING id, category, name, default_unit, created_at, updated_at
+		INSERT INTO master_ingredients (category, name, default_unit, baseline_price, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, NOW(), NOW())
+		RETURNING id, category, name, default_unit, baseline_price, created_at, updated_at
 	`
 	var item model.MasterIngredientWithAliases
-	err = tx.QueryRow(ctx, query, req.Category, req.Name, req.DefaultUnit).Scan(
-		&item.ID, &item.Category, &item.Name, &item.DefaultUnit, &item.CreatedAt, &item.UpdatedAt,
+	err = tx.QueryRow(ctx, query, req.Category, req.Name, req.DefaultUnit, baselinePrice).Scan(
+		&item.ID, &item.Category, &item.Name, &item.DefaultUnit, &item.BaselinePrice, &item.CreatedAt, &item.UpdatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to insert master ingredient: %w", err)
@@ -207,15 +212,20 @@ func (r *pgxMasterIngredientRepository) Update(ctx context.Context, id int, req 
 		return nil, fmt.Errorf("database pool is nil")
 	}
 
+	baselinePrice := 10000
+	if req.BaselinePrice > 0 {
+		baselinePrice = req.BaselinePrice
+	}
+
 	query := `
 		UPDATE master_ingredients
-		SET category = $1, name = $2, default_unit = $3, updated_at = NOW()
-		WHERE id = $4
-		RETURNING id, category, name, default_unit, created_at, updated_at
+		SET category = $1, name = $2, default_unit = $3, baseline_price = $4, updated_at = NOW()
+		WHERE id = $5
+		RETURNING id, category, name, default_unit, baseline_price, created_at, updated_at
 	`
 	var item model.MasterIngredientWithAliases
-	err := r.db.QueryRow(ctx, query, req.Category, req.Name, req.DefaultUnit, id).Scan(
-		&item.ID, &item.Category, &item.Name, &item.DefaultUnit, &item.CreatedAt, &item.UpdatedAt,
+	err := r.db.QueryRow(ctx, query, req.Category, req.Name, req.DefaultUnit, baselinePrice, id).Scan(
+		&item.ID, &item.Category, &item.Name, &item.DefaultUnit, &item.BaselinePrice, &item.CreatedAt, &item.UpdatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to update master ingredient: %w", err)

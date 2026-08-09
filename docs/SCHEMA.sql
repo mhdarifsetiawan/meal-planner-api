@@ -207,6 +207,7 @@ CREATE TABLE master_ingredients (
     category VARCHAR(100) NOT NULL,
     name VARCHAR(255) NOT NULL UNIQUE,
     default_unit VARCHAR(50) NOT NULL DEFAULT 'kg',
+    baseline_price INT NOT NULL DEFAULT 10000,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
