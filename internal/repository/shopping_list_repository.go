@@ -19,7 +19,7 @@ var ErrShoppingItemNotFound = errors.New("shopping list item not found")
 type ShoppingListRepository interface {
 	GetShoppingListByID(ctx context.Context, id int, userID string) (*model.ShoppingListDetail, error)
 	UpdateShoppingListItemChecklist(ctx context.Context, id int, userID string, ingredientName string, isChecked bool) (*model.ShoppingItem, error)
-	UpdateShoppingListItemPrice(ctx context.Context, id int, userID string, ingredientName string, newPrice int) (*model.ShoppingItem, int, error)
+	UpdateShoppingListItemPrice(ctx context.Context, id int, userID string, ingredientName string, newPrice int, submitToCommunity bool) (*model.ShoppingItem, int, error)
 }
 
 type pgxShoppingListRepository struct {
@@ -152,6 +152,7 @@ func (r *pgxShoppingListRepository) UpdateShoppingListItemPrice(
 	userID string,
 	ingredientName string,
 	newPrice int,
+	submitToCommunity bool,
 ) (*model.ShoppingItem, int, error) {
 	if r.db == nil {
 		return nil, 0, fmt.Errorf("database pool is nil")
@@ -238,36 +239,51 @@ func (r *pgxShoppingListRepository) UpdateShoppingListItemPrice(
 		return nil, 0, fmt.Errorf("failed to update meal selection total price: %w", err)
 	}
 
-	// Convert user's portion price edit into standardized unit price for Crowdsource Price Watch
-	unitPriceToLog := newPrice
-	if oldPortionPrice > 0 && newPrice > 0 {
-		var currentUnitPrice int
-		errFetch := tx.QueryRow(ctx, `
-			SELECT l.price
-			FROM ingredient_price_log l
-			WHERE LOWER(l.ingredient_name) = LOWER($1)
-			  AND (l.city_id = $2 OR l.city_id IS NULL OR $2 IS NULL)
-			ORDER BY CASE WHEN l.source = 'crowdsource' AND l.recorded_at >= NOW() - INTERVAL '7 days' THEN 0 ELSE 1 END, l.recorded_at DESC
-			LIMIT 1
-		`, ingredientName, cityID).Scan(&currentUnitPrice)
-		if errFetch != nil || currentUnitPrice <= 0 {
-			_ = tx.QueryRow(ctx, `
-				SELECT baseline_price FROM master_ingredients WHERE LOWER(name) = LOWER($1) LIMIT 1
-			`, ingredientName).Scan(&currentUnitPrice)
+	// Option B: Local shopping list price edits DO NOT automatically insert into ingredient_price_log.
+	// If user explicitly checked "Laporkan ke Pantau Harga Komunitas", submit a pending price_submission.
+	if submitToCommunity && cityID != nil {
+		unitPriceToLog := newPrice
+		if oldPortionPrice > 0 && newPrice > 0 {
+			var currentUnitPrice int
+			errFetch := tx.QueryRow(ctx, `
+				SELECT l.price
+				FROM ingredient_price_log l
+				WHERE LOWER(l.ingredient_name) = LOWER($1)
+				  AND (l.city_id = $2 OR l.city_id IS NULL OR $2 IS NULL)
+				ORDER BY CASE WHEN l.source = 'crowdsource' AND l.recorded_at >= NOW() - INTERVAL '7 days' THEN 0 ELSE 1 END, l.recorded_at DESC
+				LIMIT 1
+			`, ingredientName, cityID).Scan(&currentUnitPrice)
+			if errFetch != nil || currentUnitPrice <= 0 {
+				_ = tx.QueryRow(ctx, `
+					SELECT baseline_price FROM master_ingredients WHERE LOWER(name) = LOWER($1) LIMIT 1
+				`, ingredientName).Scan(&currentUnitPrice)
+			}
+
+			if currentUnitPrice > 0 {
+				ratio := float64(newPrice) / float64(oldPortionPrice)
+				unitPriceToLog = int(math.Round(float64(currentUnitPrice) * ratio))
+			}
 		}
 
-		if currentUnitPrice > 0 {
-			ratio := float64(newPrice) / float64(oldPortionPrice)
-			unitPriceToLog = int(math.Round(float64(currentUnitPrice) * ratio))
+		// Find matching active price_watch_item ID if available
+		var watchItemID int
+		errWatchItem := tx.QueryRow(ctx, `
+			SELECT pwi.id
+			FROM price_watch_items pwi
+			JOIN price_watch_campaigns pwc ON pwc.id = pwi.campaign_id
+			WHERE LOWER(pwi.ingredient_name) = LOWER($1) AND pwc.is_active = true AND pwi.is_active = true
+			LIMIT 1
+		`, ingredientName).Scan(&watchItemID)
+
+		if errWatchItem == nil && watchItemID > 0 {
+			// Submit pending price_submission for consensus validation
+			insertSubQuery := `
+				INSERT INTO price_submissions (watch_item_id, user_id, city_id, submitted_price, status, created_at)
+				VALUES ($1, $2, $3, $4, 'pending', NOW())
+			`
+			_, _ = tx.Exec(ctx, insertSubQuery, watchItemID, userID, *cityID, unitPriceToLog)
 		}
 	}
-
-	// Insert into ingredient_price_log for Crowdsource Price Watch
-	insertPriceLogQuery := `
-		INSERT INTO ingredient_price_log (ingredient_name, city_id, price, source, confidence_score, recorded_at)
-		VALUES ($1, $2, $3, 'crowdsource', 0.90, NOW())
-	`
-	_, _ = tx.Exec(ctx, insertPriceLogQuery, ingredientName, cityID, unitPriceToLog)
 
 	if err := tx.Commit(ctx); err != nil {
 		return nil, 0, fmt.Errorf("failed to commit price update transaction: %w", err)

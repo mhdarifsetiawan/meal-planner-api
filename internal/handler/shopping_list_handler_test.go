@@ -49,7 +49,7 @@ func (m *MockShoppingListRepository) UpdateShoppingListItemChecklist(ctx context
 	}, nil
 }
 
-func (m *MockShoppingListRepository) UpdateShoppingListItemPrice(ctx context.Context, id int, userID string, ingredientName string, newPrice int) (*model.ShoppingItem, int, error) {
+func (m *MockShoppingListRepository) UpdateShoppingListItemPrice(ctx context.Context, id int, userID string, ingredientName string, newPrice int, submitToCommunity bool) (*model.ShoppingItem, int, error) {
 	if m.mockErr != nil {
 		return nil, 0, m.mockErr
 	}
