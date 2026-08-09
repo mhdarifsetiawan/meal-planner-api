@@ -31,27 +31,34 @@ func (p *AIEstimateProvider) GetIngredientPrice(ctx context.Context, name string
 
 	// 1. Query DB log if database connection pool is available
 	if p.db != nil {
-		var price int
+		var priceVal int
 		var sourceStr string
 		var confidence float64
+		var baselinePrice int
 
 		// Exact name match only - "Telur" != "Telur Ayam" (could be Telur Bebek, etc.)
 		query := `
-			SELECT price, source, COALESCE(confidence_score, 0.8)
-			FROM ingredient_price_log
-			WHERE LOWER(ingredient_name) = LOWER($1)
-			  AND (city_id = $2 OR city_id IS NULL OR $2 IS NULL)
+			SELECT 
+				l.price, 
+				l.source, 
+				COALESCE(l.confidence_score, 0.8),
+				COALESCE(mi.baseline_price, l.price) AS baseline_price
+			FROM ingredient_price_log l
+			LEFT JOIN master_ingredients mi ON LOWER(mi.name) = LOWER(l.ingredient_name)
+			WHERE LOWER(l.ingredient_name) = LOWER($1)
+			  AND (l.city_id = $2 OR l.city_id IS NULL OR $2 IS NULL)
 			ORDER BY
-				CASE WHEN source = 'crowdsource' THEN 0 ELSE 1 END,
-				recorded_at DESC
+				CASE WHEN l.source = 'crowdsource' THEN 0 ELSE 1 END,
+				l.recorded_at DESC
 			LIMIT 1
 		`
-		err := p.db.QueryRow(ctx, query, cleanName, cityID).Scan(&price, &sourceStr, &confidence)
-		if err == nil && price > 0 {
+		err := p.db.QueryRow(ctx, query, cleanName, cityID).Scan(&priceVal, &sourceStr, &confidence, &baselinePrice)
+		if err == nil && priceVal > 0 {
 			return &IngredientPrice{
 				IngredientName:  cleanName,
 				CityID:          cityID,
-				Price:           price,
+				Price:           priceVal,
+				BaselinePrice:   baselinePrice,
 				Source:          PriceSource(sourceStr),
 				ConfidenceScore: confidence,
 			}, nil

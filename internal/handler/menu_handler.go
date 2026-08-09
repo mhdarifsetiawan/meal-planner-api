@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strings"
 
@@ -213,8 +214,12 @@ func (h *MenuHandler) HandleGenerateMenu(c *fiber.Ctx) error {
 				cleanKey := strings.ToLower(strings.TrimSpace(ing.Name))
 				if batchPrices != nil {
 					if pRes, found := batchPrices[cleanKey]; found && pRes != nil && pRes.Price > 0 {
-						// Overwrite if source is crowdsource OR if AI returned estimatedPrice <= 0
-						if pRes.Source == price.SourceCrowdsource || ing.EstimatedPrice <= 0 {
+						if pRes.Source == price.SourceCrowdsource && pRes.BaselinePrice > 0 && ing.EstimatedPrice > 0 {
+							// Scale AI recipe portion price proportionally based on (crowdsource_unit_price / baseline_unit_price) ratio
+							ratio := float64(pRes.Price) / float64(pRes.BaselinePrice)
+							ing.EstimatedPrice = int(math.Round(float64(ing.EstimatedPrice) * ratio))
+							ing.PriceSource = string(pRes.Source)
+						} else if ing.EstimatedPrice <= 0 {
 							ing.EstimatedPrice = pRes.Price
 							ing.PriceSource = string(pRes.Source)
 						}

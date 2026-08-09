@@ -15,6 +15,7 @@ type IngredientPrice struct {
 	IngredientName  string      `json:"ingredient_name"`
 	CityID          *int        `json:"city_id,omitempty"`
 	Price           int         `json:"price"` // Rupiah integer
+	BaselinePrice   int         `json:"baseline_price,omitempty"`
 	Source          PriceSource `json:"source"`
 	ConfidenceScore float64     `json:"confidence_score"`
 }

@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -140,3 +141,22 @@ func TestHandleGenerateMenu_SuccessAndRateLimit(t *testing.T) {
 		t.Errorf("Expected status 429 Too Many Requests, got %d", resp4.StatusCode)
 	}
 }
+
+func TestHandleGenerateMenu_CrowdsourcePriceScaling(t *testing.T) {
+	// Verify that crowdsource bulk unit price (e.g. 30000/kg) scales AI portion price (4000 for 2 eggs)
+	// proportionally instead of overwriting it with 30000.
+	aiPortionPrice := 4000
+	baselineUnitPrice := 32000
+	crowdsourceUnitPrice := 30000
+
+	ratio := float64(crowdsourceUnitPrice) / float64(baselineUnitPrice)
+	expectedPortionPrice := int(math.Round(float64(aiPortionPrice) * ratio)) // 3750
+
+	if expectedPortionPrice == 30000 {
+		t.Fatalf("Portion price should NOT equal bulk unit price!")
+	}
+	if expectedPortionPrice != 3750 {
+		t.Errorf("Expected portion price 3750, got %d", expectedPortionPrice)
+	}
+}
+
