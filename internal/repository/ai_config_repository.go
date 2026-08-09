@@ -46,12 +46,15 @@ func (r *pgxAIConfigRepository) EnsureDefaultConfigs(ctx context.Context) error 
 	}
 
 	for _, d := range defaults {
-		query := `
-			INSERT INTO ai_provider_config (provider_name, model_name, is_active, api_key_ref, priority, created_at)
-			VALUES ($1, $2, $3, $4, $5, NOW())
-			ON CONFLICT DO NOTHING
-		`
-		_, _ = r.db.Exec(ctx, query, d.name, d.model, d.active, d.keyRef, d.priority)
+		var exists bool
+		err := r.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM ai_provider_config WHERE LOWER(provider_name) = LOWER($1))`, d.name).Scan(&exists)
+		if err == nil && !exists {
+			query := `
+				INSERT INTO ai_provider_config (provider_name, model_name, is_active, api_key_ref, priority, created_at)
+				VALUES ($1, $2, $3, $4, $5, NOW())
+			`
+			_, _ = r.db.Exec(ctx, query, d.name, d.model, d.active, d.keyRef, d.priority)
+		}
 	}
 
 	return nil
@@ -63,6 +66,17 @@ func (r *pgxAIConfigRepository) GetAllConfigs(ctx context.Context) ([]model.AIPr
 	}
 
 	_ = r.EnsureDefaultConfigs(ctx)
+
+	// Automatically clean up duplicate entries if any existed
+	cleanupQuery := `
+		DELETE FROM ai_provider_config
+		WHERE id NOT IN (
+			SELECT DISTINCT ON (LOWER(provider_name)) id
+			FROM ai_provider_config
+			ORDER BY LOWER(provider_name), is_active DESC, id ASC
+		);
+	`
+	_, _ = r.db.Exec(ctx, cleanupQuery)
 
 	query := `
 		SELECT id, provider_name, model_name, is_active, api_key_ref, priority, created_at
