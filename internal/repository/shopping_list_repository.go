@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"strings"
 
 	"meal-planner-api/internal/model"
@@ -20,7 +19,7 @@ var ErrShoppingItemNotFound = errors.New("shopping list item not found")
 type ShoppingListRepository interface {
 	GetShoppingListByID(ctx context.Context, id int, userID string) (*model.ShoppingListDetail, error)
 	UpdateShoppingListItemChecklist(ctx context.Context, id int, userID string, ingredientName string, isChecked bool) (*model.ShoppingItem, error)
-	UpdateShoppingListItemPrice(ctx context.Context, id int, userID string, ingredientName string, newPrice int, submitToCommunity bool) (*model.ShoppingItem, int, bool, error)
+	UpdateShoppingListItemPrice(ctx context.Context, id int, userID string, ingredientName string, newPrice int) (*model.ShoppingItem, int, error)
 }
 
 type pgxShoppingListRepository struct {
@@ -153,16 +152,14 @@ func (r *pgxShoppingListRepository) UpdateShoppingListItemPrice(
 	userID string,
 	ingredientName string,
 	newPrice int,
-	submitToCommunity bool,
-) (*model.ShoppingItem, int, bool, error) {
-	actuallySubmitted := false
+) (*model.ShoppingItem, int, error) {
 	if r.db == nil {
-		return nil, 0, false, fmt.Errorf("database pool is nil")
+		return nil, 0, fmt.Errorf("database pool is nil")
 	}
 
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
-		return nil, 0, false, fmt.Errorf("failed to begin transaction: %w", err)
+		return nil, 0, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
 		if err != nil {
@@ -170,50 +167,41 @@ func (r *pgxShoppingListRepository) UpdateShoppingListItemPrice(
 		}
 	}()
 
-	// Fetch list with items JSONB + ownership + city_id
+	// Fetch list with items JSONB + ownership
 	var itemsRaw []byte
 	var listUserID string
 	var mealSelectionID int
-	var cityID *int
 
 	err = tx.QueryRow(ctx, `
-		SELECT sl.items, sl.user_id, sl.meal_selection_id, u.city_id
+		SELECT sl.items, sl.user_id, sl.meal_selection_id
 		FROM shopping_lists sl
-		JOIN users u ON u.id = sl.user_id
 		WHERE sl.id = $1
 		FOR UPDATE OF sl
-	`, id).Scan(&itemsRaw, &listUserID, &mealSelectionID, &cityID)
+	`, id).Scan(&itemsRaw, &listUserID, &mealSelectionID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, 0, false, ErrShoppingListNotFound
+			return nil, 0, ErrShoppingListNotFound
 		}
-		return nil, 0, false, fmt.Errorf("failed to lock shopping list for price update: %w", err)
+		return nil, 0, fmt.Errorf("failed to lock shopping list for price update: %w", err)
 	}
 	if listUserID != userID {
-		return nil, 0, false, ErrShoppingListNotFound
+		return nil, 0, ErrShoppingListNotFound
 	}
 
 	// Unmarshal JSONB items
 	var items []model.ShoppingItem
 	if len(itemsRaw) > 0 {
 		if jsonErr := json.Unmarshal(itemsRaw, &items); jsonErr != nil {
-			return nil, 0, false, fmt.Errorf("failed to unmarshal items: %w", jsonErr)
+			return nil, 0, fmt.Errorf("failed to unmarshal items: %w", jsonErr)
 		}
 	}
 
 	// Find and update the target item in the slice
 	var updatedItem *model.ShoppingItem
-	var oldPortionPrice int
 	newTotalEstimatedPrice := 0
 
 	for i := range items {
-		name := items[i].IngredientName
-		if name == "" {
-			// some items may use a "name" field alias
-			name = items[i].IngredientName
-		}
-		if strings.EqualFold(name, ingredientName) {
-			oldPortionPrice = items[i].EstimatedPrice
+		if strings.EqualFold(items[i].IngredientName, ingredientName) {
 			items[i].EstimatedPrice = newPrice
 			updatedItem = &items[i]
 		}
@@ -222,14 +210,14 @@ func (r *pgxShoppingListRepository) UpdateShoppingListItemPrice(
 
 	if updatedItem == nil {
 		err = ErrShoppingItemNotFound
-		return nil, 0, false, err
+		return nil, 0, err
 	}
 
 	// Marshal updated items back to JSONB
 	updatedItemsRaw, jsonErr := json.Marshal(items)
 	if jsonErr != nil {
 		err = fmt.Errorf("failed to marshal updated items: %w", jsonErr)
-		return nil, 0, false, err
+		return nil, 0, err
 	}
 
 	// Write updated JSONB items back to shopping_lists
@@ -237,7 +225,7 @@ func (r *pgxShoppingListRepository) UpdateShoppingListItemPrice(
 		UPDATE shopping_lists SET items = $3::jsonb WHERE id = $1 AND user_id = $2
 	`, id, userID, string(updatedItemsRaw))
 	if err != nil {
-		return nil, 0, false, fmt.Errorf("failed to update shopping list items: %w", err)
+		return nil, 0, fmt.Errorf("failed to update shopping list items: %w", err)
 	}
 
 	// Update meal_selections total price
@@ -245,59 +233,12 @@ func (r *pgxShoppingListRepository) UpdateShoppingListItemPrice(
 		UPDATE meal_selections SET total_estimated_price = $2 WHERE id = $1
 	`, mealSelectionID, newTotalEstimatedPrice)
 	if err != nil {
-		return nil, 0, false, fmt.Errorf("failed to update meal selection total price: %w", err)
-	}
-
-	// Option B: If user explicitly checked "Laporkan ke Pantau Harga Komunitas",
-	// submit a pending price_submission for community consensus (NOT direct ingredient_price_log).
-	if submitToCommunity && cityID != nil {
-		unitPriceToLog := newPrice
-		if oldPortionPrice > 0 && newPrice > 0 {
-			var currentUnitPrice int
-			errFetch := tx.QueryRow(ctx, `
-				SELECT l.price
-				FROM ingredient_price_log l
-				WHERE LOWER(l.ingredient_name) = LOWER($1)
-				  AND (l.city_id = $2 OR l.city_id IS NULL OR $2 IS NULL)
-				ORDER BY CASE WHEN l.source = 'crowdsource' AND l.recorded_at >= NOW() - INTERVAL '7 days' THEN 0 ELSE 1 END, l.recorded_at DESC
-				LIMIT 1
-			`, ingredientName, cityID).Scan(&currentUnitPrice)
-			if errFetch != nil || currentUnitPrice <= 0 {
-				_ = tx.QueryRow(ctx, `
-					SELECT baseline_price FROM master_ingredients WHERE LOWER(name) = LOWER($1) LIMIT 1
-				`, ingredientName).Scan(&currentUnitPrice)
-			}
-			if currentUnitPrice > 0 {
-				ratio := float64(newPrice) / float64(oldPortionPrice)
-				unitPriceToLog = int(math.Round(float64(currentUnitPrice) * ratio))
-			}
-		}
-
-		// Find matching active price_watch_item
-		var watchItemID int
-		errWatchItem := tx.QueryRow(ctx, `
-			SELECT pwi.id
-			FROM price_watch_items pwi
-			JOIN price_watch_campaigns pwc ON pwc.id = pwi.campaign_id
-			WHERE LOWER(pwi.ingredient_name) = LOWER($1) AND pwc.is_active = true AND pwi.is_active = true
-			LIMIT 1
-		`, ingredientName).Scan(&watchItemID)
-
-		if errWatchItem == nil && watchItemID > 0 {
-			_, errInsert := tx.Exec(ctx, `
-				INSERT INTO price_submissions (watch_item_id, user_id, city_id, submitted_price, status, created_at)
-				VALUES ($1, $2, $3, $4, 'pending', NOW())
-			`, watchItemID, userID, *cityID, unitPriceToLog)
-			if errInsert == nil {
-				actuallySubmitted = true
-			}
-		}
+		return nil, 0, fmt.Errorf("failed to update meal selection total price: %w", err)
 	}
 
 	if err = tx.Commit(ctx); err != nil {
-		return nil, 0, false, fmt.Errorf("failed to commit price update transaction: %w", err)
+		return nil, 0, fmt.Errorf("failed to commit price update transaction: %w", err)
 	}
 
-	return updatedItem, newTotalEstimatedPrice, actuallySubmitted, nil
+	return updatedItem, newTotalEstimatedPrice, nil
 }
-

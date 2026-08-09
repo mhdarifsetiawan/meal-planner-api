@@ -147,9 +147,8 @@ func (h *ShoppingListHandler) HandleUpdateShoppingListItem(c *fiber.Ctx) error {
 }
 
 type UpdateItemPriceRequest struct {
-	IngredientName    string `json:"ingredient_name"`
-	RealPrice         int    `json:"real_price"`
-	SubmitToCommunity bool   `json:"submit_to_community"`
+	IngredientName string `json:"ingredient_name"`
+	RealPrice      int    `json:"real_price"`
 }
 
 func (h *ShoppingListHandler) HandleUpdateShoppingListItemPrice(c *fiber.Ctx) error {
@@ -193,7 +192,7 @@ func (h *ShoppingListHandler) HandleUpdateShoppingListItemPrice(c *fiber.Ctx) er
 		})
 	}
 
-	updatedItem, newTotal, actuallySubmitted, err := h.repo.UpdateShoppingListItemPrice(c.Context(), id, userID, req.IngredientName, req.RealPrice, req.SubmitToCommunity)
+	updatedItem, newTotal, err := h.repo.UpdateShoppingListItemPrice(c.Context(), id, userID, req.IngredientName, req.RealPrice)
 	if err != nil {
 		if errors.Is(err, repository.ErrShoppingListNotFound) {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
@@ -224,7 +223,6 @@ func (h *ShoppingListHandler) HandleUpdateShoppingListItemPrice(c *fiber.Ctx) er
 			"id":                       id,
 			"updated_item":             updatedItem,
 			"new_total_estimated_price": newTotal,
-			"submitted_to_community":   actuallySubmitted,
 		},
 		"error": nil,
 	})
