@@ -26,6 +26,13 @@ func (m *MockHistoryRepository) GetHistoryByUserID(ctx context.Context, userID s
 	return m.mockItems, m.mockTotal, nil
 }
 
+func (m *MockHistoryRepository) DeleteHistoryItem(ctx context.Context, userID string, historyID int) error {
+	if m.mockErr != nil {
+		return m.mockErr
+	}
+	return nil
+}
+
 func setupHistoryTestApp(repo *MockHistoryRepository) *fiber.App {
 	app := fiber.New()
 	h := NewHistoryHandler(repo)
@@ -39,6 +46,7 @@ func setupHistoryTestApp(repo *MockHistoryRepository) *fiber.App {
 	})
 
 	app.Get("/api/v1/history", h.HandleGetHistory)
+	app.Delete("/api/v1/history/:id", h.HandleDeleteHistory)
 	return app
 }
 
@@ -77,6 +85,23 @@ func TestHandleGetHistory_Success(t *testing.T) {
 	app := setupHistoryTestApp(mockRepo)
 
 	req := httptest.NewRequest("GET", "/api/v1/history?limit=10&offset=0", nil)
+	req.Header.Set("Test-User-ID", "user-uuid-100")
+
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200 OK, got %d", resp.StatusCode)
+	}
+}
+
+func TestHandleDeleteHistory_Success(t *testing.T) {
+	mockRepo := &MockHistoryRepository{}
+	app := setupHistoryTestApp(mockRepo)
+
+	req := httptest.NewRequest("DELETE", "/api/v1/history/1", nil)
 	req.Header.Set("Test-User-ID", "user-uuid-100")
 
 	resp, err := app.Test(req)

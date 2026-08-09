@@ -154,8 +154,9 @@ func main() {
 	api.Get("/shopping-list/:id", auth.RequireAuth(userRepo), shoppingListHandler.HandleGetShoppingList)
 	api.Patch("/shopping-list/:id/item", auth.RequireAuth(userRepo), shoppingListHandler.HandleUpdateShoppingListItem)
 
-	// History endpoint
+	// History endpoints
 	api.Get("/history", auth.RequireAuth(userRepo), historyHandler.HandleGetHistory)
+	api.Delete("/history/:id", auth.RequireAuth(userRepo), historyHandler.HandleDeleteHistory)
 
 	// Subscription endpoint
 	api.Post("/subscription/subscribe", auth.RequireAuth(userRepo), subHandler.HandleSubscribe)

@@ -40,6 +40,9 @@ POST /menu/select
 
 GET /history
   → riwayat meal_selections user (butuh plan dengan history_access = true)
+
+DELETE /history/:id
+  → hapus item riwayat pilihan menu milik user (id = meal_selection_id)
 ```
 
 ## Shopping List

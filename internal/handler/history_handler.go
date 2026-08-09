@@ -60,3 +60,42 @@ func (h *HistoryHandler) HandleGetHistory(c *fiber.Ctx) error {
 		"error": nil,
 	})
 }
+
+func (h *HistoryHandler) HandleDeleteHistory(c *fiber.Ctx) error {
+	userID, err := auth.GetUserID(c)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"data": nil,
+			"error": fiber.Map{
+				"message": "Unauthorized: missing user_id in context",
+			},
+		})
+	}
+
+	idStr := c.Params("id")
+	historyID, err := strconv.Atoi(idStr)
+	if err != nil || historyID <= 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"data": nil,
+			"error": fiber.Map{
+				"message": "Invalid history item ID",
+			},
+		})
+	}
+
+	if err := h.repo.DeleteHistoryItem(c.Context(), userID, historyID); err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"data": nil,
+			"error": fiber.Map{
+				"message": err.Error(),
+			},
+		})
+	}
+
+	return c.Status(http.StatusOK).JSON(fiber.Map{
+		"data": fiber.Map{
+			"message": "History item deleted successfully",
+		},
+		"error": nil,
+	})
+}

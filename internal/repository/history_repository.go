@@ -11,6 +11,7 @@ import (
 
 type HistoryRepository interface {
 	GetHistoryByUserID(ctx context.Context, userID string, limit int, offset int) ([]model.HistoryItem, int, error)
+	DeleteHistoryItem(ctx context.Context, userID string, historyID int) error
 }
 
 type pgxHistoryRepository struct {
@@ -19,6 +20,24 @@ type pgxHistoryRepository struct {
 
 func NewHistoryRepository(db *pgxpool.Pool) HistoryRepository {
 	return &pgxHistoryRepository{db: db}
+}
+
+func (r *pgxHistoryRepository) DeleteHistoryItem(ctx context.Context, userID string, historyID int) error {
+	if r.db == nil {
+		return fmt.Errorf("database pool is nil")
+	}
+
+	query := `DELETE FROM meal_selections WHERE id = $1 AND user_id = $2`
+	cmd, err := r.db.Exec(ctx, query, historyID, userID)
+	if err != nil {
+		return fmt.Errorf("failed to delete history item: %w", err)
+	}
+
+	if cmd.RowsAffected() == 0 {
+		return fmt.Errorf("history item not found or unauthorized")
+	}
+
+	return nil
 }
 
 func (r *pgxHistoryRepository) GetHistoryByUserID(ctx context.Context, userID string, limit int, offset int) ([]model.HistoryItem, int, error) {
