@@ -50,7 +50,7 @@ func (p *AIEstimateProvider) GetIngredientPrice(ctx context.Context, name string
 			WHERE LOWER(l.ingredient_name) = LOWER($1)
 			  AND (l.city_id = $2 OR l.city_id IS NULL OR $2 IS NULL)
 			ORDER BY
-				CASE WHEN l.source = 'crowdsource' THEN 0 ELSE 1 END,
+				CASE WHEN l.source = 'crowdsource' AND l.recorded_at >= NOW() - INTERVAL '7 days' THEN 0 ELSE 1 END,
 				l.recorded_at DESC
 			LIMIT 1
 		`

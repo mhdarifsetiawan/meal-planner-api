@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 
 	"meal-planner-api/internal/model"
 
@@ -194,9 +195,11 @@ func (r *pgxShoppingListRepository) UpdateShoppingListItemPrice(
 	var updatedItem *model.ShoppingItem
 	found := false
 	newTotalEstimatedPrice := 0
+	oldPortionPrice := 0
 
 	for i := range items {
 		if items[i].IngredientName == ingredientName {
+			oldPortionPrice = items[i].EstimatedPrice
 			items[i].EstimatedPrice = newPrice
 			updatedItem = &items[i]
 			found = true
@@ -235,12 +238,36 @@ func (r *pgxShoppingListRepository) UpdateShoppingListItemPrice(
 		return nil, 0, fmt.Errorf("failed to update meal selection total price: %w", err)
 	}
 
+	// Convert user's portion price edit into standardized unit price for Crowdsource Price Watch
+	unitPriceToLog := newPrice
+	if oldPortionPrice > 0 && newPrice > 0 {
+		var currentUnitPrice int
+		errFetch := tx.QueryRow(ctx, `
+			SELECT l.price
+			FROM ingredient_price_log l
+			WHERE LOWER(l.ingredient_name) = LOWER($1)
+			  AND (l.city_id = $2 OR l.city_id IS NULL OR $2 IS NULL)
+			ORDER BY CASE WHEN l.source = 'crowdsource' AND l.recorded_at >= NOW() - INTERVAL '7 days' THEN 0 ELSE 1 END, l.recorded_at DESC
+			LIMIT 1
+		`, ingredientName, cityID).Scan(&currentUnitPrice)
+		if errFetch != nil || currentUnitPrice <= 0 {
+			_ = tx.QueryRow(ctx, `
+				SELECT baseline_price FROM master_ingredients WHERE LOWER(name) = LOWER($1) LIMIT 1
+			`, ingredientName).Scan(&currentUnitPrice)
+		}
+
+		if currentUnitPrice > 0 {
+			ratio := float64(newPrice) / float64(oldPortionPrice)
+			unitPriceToLog = int(math.Round(float64(currentUnitPrice) * ratio))
+		}
+	}
+
 	// Insert into ingredient_price_log for Crowdsource Price Watch
 	insertPriceLogQuery := `
 		INSERT INTO ingredient_price_log (ingredient_name, city_id, price, source, confidence_score, recorded_at)
 		VALUES ($1, $2, $3, 'crowdsource', 0.90, NOW())
 	`
-	_, _ = tx.Exec(ctx, insertPriceLogQuery, ingredientName, cityID, newPrice)
+	_, _ = tx.Exec(ctx, insertPriceLogQuery, ingredientName, cityID, unitPriceToLog)
 
 	// Award credit (100 credits) to user for reporting real market price
 	creditQuery := `
