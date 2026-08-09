@@ -18,6 +18,10 @@ type MasterIngredientRepository interface {
 	Delete(ctx context.Context, id int) error
 	AddAlias(ctx context.Context, ingredientID int, aliasName string) (*model.IngredientAlias, error)
 	DeleteAlias(ctx context.Context, aliasID int) error
+	// GetAllCanonicalNames returns all canonical ingredient names for AI prompt injection
+	GetAllCanonicalNames(ctx context.Context) ([]string, error)
+	// NormalizeIngredientName resolves an AI-generated name to its canonical master_ingredients name via alias lookup
+	NormalizeIngredientName(ctx context.Context, rawName string) string
 }
 
 type pgxMasterIngredientRepository struct {
@@ -288,4 +292,72 @@ func (r *pgxMasterIngredientRepository) DeleteAlias(ctx context.Context, aliasID
 		return fmt.Errorf("alias not found")
 	}
 	return nil
+}
+
+func (r *pgxMasterIngredientRepository) GetAllCanonicalNames(ctx context.Context) ([]string, error) {
+	if r.db == nil {
+		return nil, fmt.Errorf("database pool is nil")
+	}
+
+	rows, err := r.db.Query(ctx, `
+		SELECT mi.name, COALESCE(STRING_AGG(ia.alias_name, '|'), '') AS aliases
+		FROM master_ingredients mi
+		LEFT JOIN ingredient_aliases ia ON ia.master_ingredient_id = mi.id
+		GROUP BY mi.id, mi.name
+		ORDER BY mi.name
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query canonical names: %w", err)
+	}
+	defer rows.Close()
+
+	var names []string
+	for rows.Next() {
+		var name, aliasesConcat string
+		if err := rows.Scan(&name, &aliasesConcat); err != nil {
+			continue
+		}
+		names = append(names, name)
+		// Include aliases so AI sees the full picture
+		if aliasesConcat != "" {
+			for _, a := range strings.Split(aliasesConcat, "|") {
+				if a != "" {
+					names = append(names, a)
+				}
+			}
+		}
+	}
+	return names, rows.Err()
+}
+
+func (r *pgxMasterIngredientRepository) NormalizeIngredientName(ctx context.Context, rawName string) string {
+	if r.db == nil {
+		return rawName
+	}
+
+	clean := strings.ToLower(strings.TrimSpace(rawName))
+
+	// 1. Try exact match against master_ingredients.name
+	var canonical string
+	err := r.db.QueryRow(ctx, `
+		SELECT name FROM master_ingredients WHERE LOWER(name) = $1 LIMIT 1
+	`, clean).Scan(&canonical)
+	if err == nil {
+		return canonical
+	}
+
+	// 2. Try alias lookup: alias_name → canonical master name
+	err = r.db.QueryRow(ctx, `
+		SELECT mi.name
+		FROM ingredient_aliases ia
+		JOIN master_ingredients mi ON mi.id = ia.master_ingredient_id
+		WHERE LOWER(ia.alias_name) = $1
+		LIMIT 1
+	`, clean).Scan(&canonical)
+	if err == nil {
+		return canonical
+	}
+
+	// 3. Return raw name unchanged — no match found
+	return rawName
 }

@@ -54,7 +54,7 @@ func NewOpenAIProviderWithClient(client *openai.Client, model string) *OpenAIPro
 }
 
 func (p *OpenAIProvider) GenerateMenu(ctx context.Context, params MenuGenerateParams) (*MenuOptions, error) {
-	systemPrompt := BuildSystemPrompt()
+	systemPrompt := BuildSystemPrompt(params.IngredientCatalog)
 	userPrompt := BuildUserPrompt(params)
 
 	req := openai.ChatCompletionRequest{

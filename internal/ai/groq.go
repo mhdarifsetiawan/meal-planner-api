@@ -39,7 +39,7 @@ func NewGroqProvider(apiKey string, model string) (*GroqProvider, error) {
 }
 
 func (p *GroqProvider) GenerateMenu(ctx context.Context, params MenuGenerateParams) (*MenuOptions, error) {
-	systemPrompt := BuildSystemPrompt()
+	systemPrompt := BuildSystemPrompt(params.IngredientCatalog)
 	userPrompt := BuildUserPrompt(params)
 
 	req := openai.ChatCompletionRequest{

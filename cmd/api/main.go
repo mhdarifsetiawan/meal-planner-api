@@ -64,6 +64,7 @@ func main() {
 	historyRepo := repository.NewHistoryRepository(dbPool)
 	subRepo := repository.NewSubscriptionRepository(dbPool)
 	aiConfigRepo := repository.NewAIConfigRepository(dbPool)
+	masterIngredientRepo := repository.NewMasterIngredientRepository(dbPool)
 	rateLimiter := subscription.NewPostgresRateLimiter(dbPool)
 	priceProvider := price.NewAIEstimateProvider(dbPool)
 	dummyPayment := payment.NewDummyPaymentProvider(0)
@@ -80,7 +81,7 @@ func main() {
 	regionHandler := handler.NewRegionHandler(dbPool)
 	adminAIConfigHandler := handler.NewAdminAIConfigHandler(aiConfigRepo)
 
-	menuHandler := handler.NewMenuHandler(dynamicAIProvider, priceProvider, userRepo, subRepo, rateLimiter, menuRepo)
+	menuHandler := handler.NewMenuHandler(dynamicAIProvider, priceProvider, userRepo, subRepo, rateLimiter, masterIngredientRepo, menuRepo)
 
 
 	app := fiber.New(fiber.Config{
@@ -193,7 +194,6 @@ func main() {
 	admin.Get("/price-watch/submissions", adminPWHandler.HandleGetAllSubmissions)
 
 	// Master Ingredients Admin endpoints
-	masterIngredientRepo := repository.NewMasterIngredientRepository(dbPool)
 	adminMasterIngredientHandler := handler.NewAdminMasterIngredientHandler(masterIngredientRepo)
 
 	admin.Get("/master-ingredients", adminMasterIngredientHandler.HandleGetAll)

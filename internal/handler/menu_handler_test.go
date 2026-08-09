@@ -31,7 +31,7 @@ func (m *MockAIProvider) GenerateMenu(ctx context.Context, params ai.MenuGenerat
 func setupMenuTestApp(aiProv ai.AIProvider, userRepo *MockUserRepository, rateLimiter subscription.RateLimiter) *fiber.App {
 	app := fiber.New()
 	priceProv := price.NewAIEstimateProvider(nil)
-	handler := NewMenuHandler(aiProv, priceProv, userRepo, nil, rateLimiter)
+	handler := NewMenuHandler(aiProv, priceProv, userRepo, nil, rateLimiter, nil)
 
 	app.Use(func(c *fiber.Ctx) error {
 		userID := c.Get("Test-User-ID")

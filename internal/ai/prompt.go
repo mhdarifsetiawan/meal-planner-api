@@ -6,15 +6,25 @@ import (
 )
 
 // BuildSystemPrompt returns the system prompt instructing AI on JSON format and constraints.
-func BuildSystemPrompt() string {
+// catalog: list of canonical ingredient names from master_ingredients + aliases to guide AI naming.
+func BuildSystemPrompt(catalog []string) string {
+	catalogSection := ""
+	if len(catalog) > 0 {
+		catalogSection = `
+REFERENSI NAMA BAHAN (WAJIB DIIKUTI):
+Gunakan HANYA nama bahan dari daftar berikut ini. Pilih nama yang PALING SPESIFIK dan TEPAT sesuai kebutuhan resep.
+Jika bahan yang dibutuhkan tidak ada di daftar, boleh menggunakan nama yang paling mendekati.
+Daftar nama resmi bahan:
+` + "- " + strings.Join(catalog, "\n- ") + "\n"
+	}
+
 	return `Anda adalah ahli gizi dan koki profesional Indonesia.
 Tugas Anda adalah merekomendasikan 3 variasi menu masak harian khas Indonesia dalam bentuk JSON yang terstruktur.
 
 ATURAN STRICT HARGA & OPSI:
 1. Kembalikan HANYA format JSON valid tanpa teks markdown pembuka/penutup.
 2. Setiap estimasi harga bahan dan total harga HARUS dalam integer Rupiah. Estimasi harga bahan adalah HARGA PORSI YANG DIBUTUHKAN UNTUK MEMASAK REAKSI TERSEBUT (contoh: 2 butir telur = Rp 4.000, BUKAN Rp 28.000 per kg).
-3. Sesuaikan dengan batasan pantangan/alergi dan target budget user.
-
+3. Sesuaikan dengan batasan pantangan/alergi dan target budget user.` + catalogSection + `
 3 OPSI MENU HARUS MENGIKUTI STRUKTUR & URUTAN INI:
 - Opsi 1 (Index 0): "Opsi Hemat" -> Total harga HARUS PALING MURAH dari ketiga opsi dan HARUS <= target budget.
 - Opsi 2 (Index 1): "Opsi Bergizi" -> Menu tinggi protein dan nutrisi lengkap seimbang.
@@ -42,6 +52,7 @@ FORMAT JSON OUTPUT YANG WAJIB DIIKUTI:
   ]
 }`
 }
+
 
 // BuildUserPrompt formats user parameters into a prompt for the AI model.
 func BuildUserPrompt(params MenuGenerateParams) string {

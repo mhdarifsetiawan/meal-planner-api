@@ -19,12 +19,13 @@ import (
 const DefaultFreeDailyLimit = 3
 
 type MenuHandler struct {
-	aiProvider    ai.AIProvider
-	priceProvider price.PriceProvider
-	userRepo      repository.UserRepository
-	subRepo       repository.SubscriptionRepository
-	menuRepo      repository.MenuRepository
-	rateLimiter   subscription.RateLimiter
+	aiProvider           ai.AIProvider
+	priceProvider        price.PriceProvider
+	userRepo             repository.UserRepository
+	subRepo              repository.SubscriptionRepository
+	menuRepo             repository.MenuRepository
+	masterIngredientRepo repository.MasterIngredientRepository
+	rateLimiter          subscription.RateLimiter
 }
 
 func NewMenuHandler(
@@ -33,6 +34,7 @@ func NewMenuHandler(
 	userRepo repository.UserRepository,
 	subRepo repository.SubscriptionRepository,
 	rateLimiter subscription.RateLimiter,
+	masterIngredientRepo repository.MasterIngredientRepository,
 	menuRepo ...repository.MenuRepository,
 ) *MenuHandler {
 	var mRepo repository.MenuRepository
@@ -40,12 +42,13 @@ func NewMenuHandler(
 		mRepo = menuRepo[0]
 	}
 	return &MenuHandler{
-		aiProvider:    aiProvider,
-		priceProvider: priceProvider,
-		userRepo:      userRepo,
-		subRepo:       subRepo,
-		rateLimiter:   rateLimiter,
-		menuRepo:      mRepo,
+		aiProvider:           aiProvider,
+		priceProvider:        priceProvider,
+		userRepo:             userRepo,
+		subRepo:              subRepo,
+		rateLimiter:          rateLimiter,
+		masterIngredientRepo: masterIngredientRepo,
+		menuRepo:             mRepo,
 	}
 }
 
@@ -149,17 +152,26 @@ func (h *MenuHandler) HandleGenerateMenu(c *fiber.Ctx) error {
 		}
 	}
 
-	// 4. Construct AI Params
-	params := ai.MenuGenerateParams{
-		Goal:           pref.Goal,
-		BudgetAmount:   pref.BudgetAmount,
-		BudgetPeriod:   pref.BudgetPeriod,
-		HouseholdSize:  pref.HouseholdSize,
-		Restrictions:   restrictions,
-		ExcludeRecipes: excludedRecipes,
+	// 4. Fetch ingredient catalog for prompt injection (best-effort; non-blocking if fails)
+	var ingredientCatalog []string
+	if h.masterIngredientRepo != nil {
+		if catalog, cErr := h.masterIngredientRepo.GetAllCanonicalNames(ctx); cErr == nil {
+			ingredientCatalog = catalog
+		}
 	}
 
-	// 5. Generate Menu via AI Provider
+	// 5. Construct AI Params with catalog
+	params := ai.MenuGenerateParams{
+		Goal:              pref.Goal,
+		BudgetAmount:      pref.BudgetAmount,
+		BudgetPeriod:      pref.BudgetPeriod,
+		HouseholdSize:     pref.HouseholdSize,
+		Restrictions:      restrictions,
+		ExcludeRecipes:    excludedRecipes,
+		IngredientCatalog: ingredientCatalog,
+	}
+
+	// 6. Generate Menu via AI Provider
 	menuOpts, err := h.aiProvider.GenerateMenu(ctx, params)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -170,7 +182,19 @@ func (h *MenuHandler) HandleGenerateMenu(c *fiber.Ctx) error {
 		})
 	}
 
-	// 6. Enrich ingredient prices using PriceProvider in batch (eliminates N+1 query overhead)
+	// 7. Normalize ingredient names via alias lookup (post-generate safety net)
+	// This resolves ambiguous AI names (e.g. "Telur" → "Telur Ayam") using ingredient_aliases.
+	if h.masterIngredientRepo != nil && menuOpts != nil {
+		for i := range menuOpts.Options {
+			for j := range menuOpts.Options[i].Ingredients {
+				raw := menuOpts.Options[i].Ingredients[j].Name
+				normalized := h.masterIngredientRepo.NormalizeIngredientName(ctx, raw)
+				menuOpts.Options[i].Ingredients[j].Name = normalized
+			}
+		}
+	}
+
+	// 8. Enrich ingredient prices using PriceProvider in batch (eliminates N+1 query overhead)
 	if h.priceProvider != nil && menuOpts != nil {
 		var ingredientNames []string
 		for i := range menuOpts.Options {
