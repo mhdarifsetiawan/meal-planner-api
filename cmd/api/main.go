@@ -104,7 +104,7 @@ func main() {
 	app.Use(recover.New())
 	allowedOrigins := os.Getenv("ALLOWED_ORIGINS")
 	if allowedOrigins == "" {
-		allowedOrigins = "http://localhost:3000,http://localhost:3001,https://masakapa-api.fly.dev"
+		allowedOrigins = "http://localhost:3000,http://localhost:3001,https://masakapa-api.fly.dev,https://meal-panner-web-user.vercel.app,https://meal-panner-web-admin.vercel.app"
 	}
 
 	app.Use(cors.New(cors.Config{
