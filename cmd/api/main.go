@@ -63,32 +63,13 @@ func main() {
 	shoppingListRepo := repository.NewShoppingListRepository(dbPool)
 	historyRepo := repository.NewHistoryRepository(dbPool)
 	subRepo := repository.NewSubscriptionRepository(dbPool)
+	aiConfigRepo := repository.NewAIConfigRepository(dbPool)
 	rateLimiter := subscription.NewMemoryRateLimiter()
 	priceProvider := price.NewAIEstimateProvider(dbPool)
 	dummyPayment := payment.NewDummyPaymentProvider(0)
 
-	// AI Provider Initialization (Default: OpenAI -> Groq)
-	var aiProvider ai.AIProvider
-	openAIKey := os.Getenv("AI_PROVIDER_API_KEY_OPENAI")
-	groqKey := os.Getenv("AI_PROVIDER_API_KEY_GROQ")
-
-	if openAIKey != "" {
-		provider, err := ai.NewOpenAIProvider(openAIKey, "")
-		if err != nil {
-			log.Printf("Warning: OpenAI provider init error: %v", err)
-		} else {
-			aiProvider = provider
-			log.Println("🤖 OpenAI Provider initialized")
-		}
-	} else if groqKey != "" {
-		provider, err := ai.NewGroqProvider(groqKey, "")
-		if err != nil {
-			log.Printf("Warning: Groq provider init error: %v", err)
-		} else {
-			aiProvider = provider
-			log.Println("🤖 Groq Provider initialized")
-		}
-	}
+	// Dynamic AI Provider (reads active provider from DB)
+	dynamicAIProvider := ai.NewDynamicAIProvider(aiConfigRepo)
 
 	// Handlers
 	onboardingHandler := handler.NewOnboardingHandler(userRepo)
@@ -97,10 +78,9 @@ func main() {
 	historyHandler := handler.NewHistoryHandler(historyRepo)
 	subHandler := handler.NewSubscriptionHandler(subRepo, dummyPayment)
 	regionHandler := handler.NewRegionHandler(dbPool)
-	var menuHandler *handler.MenuHandler
-	if aiProvider != nil {
-		menuHandler = handler.NewMenuHandler(aiProvider, priceProvider, userRepo, subRepo, rateLimiter)
-	}
+	adminAIConfigHandler := handler.NewAdminAIConfigHandler(aiConfigRepo)
+
+	menuHandler := handler.NewMenuHandler(dynamicAIProvider, priceProvider, userRepo, subRepo, rateLimiter)
 
 	app := fiber.New(fiber.Config{
 		AppName: "MasakApa API v0.1.0",
@@ -186,6 +166,8 @@ func main() {
 	adminPWHandler := handler.NewAdminPriceWatchHandler(pwRepo, consensusJob)
 
 	admin := api.Group("/admin", auth.RequireAuth(userRepo), auth.RequireAdmin())
+	admin.Get("/ai/configs", adminAIConfigHandler.HandleGetConfigs)
+	admin.Post("/ai/configs/select", adminAIConfigHandler.HandleSelectConfig)
 	admin.Post("/price-watch/campaigns", adminPWHandler.HandleCreateCampaign)
 	admin.Get("/price-watch/campaigns", adminPWHandler.HandleGetCampaigns)
 	admin.Get("/price-watch/campaigns/:id", adminPWHandler.HandleGetCampaignByID)
