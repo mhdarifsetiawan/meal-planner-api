@@ -159,6 +159,7 @@ func main() {
 	// Shopping list endpoints
 	api.Get("/shopping-list/:id", auth.RequireAuth(userRepo), shoppingListHandler.HandleGetShoppingList)
 	api.Patch("/shopping-list/:id/item", auth.RequireAuth(userRepo), shoppingListHandler.HandleUpdateShoppingListItem)
+	api.Patch("/shopping-list/:id/item-price", auth.RequireAuth(userRepo), shoppingListHandler.HandleUpdateShoppingListItemPrice)
 
 	// History endpoints
 	api.Get("/history", auth.RequireAuth(userRepo), historyHandler.HandleGetHistory)

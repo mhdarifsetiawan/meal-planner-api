@@ -18,6 +18,7 @@ var ErrShoppingItemNotFound = errors.New("shopping list item not found")
 type ShoppingListRepository interface {
 	GetShoppingListByID(ctx context.Context, id int, userID string) (*model.ShoppingListDetail, error)
 	UpdateShoppingListItemChecklist(ctx context.Context, id int, userID string, ingredientName string, isChecked bool) (*model.ShoppingItem, error)
+	UpdateShoppingListItemPrice(ctx context.Context, id int, userID string, ingredientName string, newPrice int) (*model.ShoppingItem, int, error)
 }
 
 type pgxShoppingListRepository struct {
@@ -142,4 +143,122 @@ func (r *pgxShoppingListRepository) UpdateShoppingListItemChecklist(
 	}
 
 	return updatedItem, nil
+}
+
+func (r *pgxShoppingListRepository) UpdateShoppingListItemPrice(
+	ctx context.Context,
+	id int,
+	userID string,
+	ingredientName string,
+	newPrice int,
+) (*model.ShoppingItem, int, error) {
+	if r.db == nil {
+		return nil, 0, fmt.Errorf("database pool is nil")
+	}
+
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	querySelect := `
+		SELECT sl.items, sl.meal_selection_id, u.city_id
+		FROM shopping_lists sl
+		JOIN users u ON u.id = sl.user_id
+		WHERE sl.id = $1 AND sl.user_id = $2
+		FOR UPDATE OF sl
+	`
+
+	var itemsRaw []byte
+	var mealSelectionID int
+	var cityID *int
+
+	err = tx.QueryRow(ctx, querySelect, id, userID).Scan(&itemsRaw, &mealSelectionID, &cityID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, 0, ErrShoppingListNotFound
+		}
+		return nil, 0, fmt.Errorf("failed to lock shopping list for price update: %w", err)
+	}
+
+	var items []model.ShoppingItem
+	if len(itemsRaw) > 0 {
+		if err := json.Unmarshal(itemsRaw, &items); err != nil {
+			return nil, 0, fmt.Errorf("failed to unmarshal items: %w", err)
+		}
+	}
+
+	var updatedItem *model.ShoppingItem
+	found := false
+	newTotalEstimatedPrice := 0
+
+	for i := range items {
+		if items[i].IngredientName == ingredientName {
+			items[i].EstimatedPrice = newPrice
+			updatedItem = &items[i]
+			found = true
+		}
+		newTotalEstimatedPrice += items[i].EstimatedPrice
+	}
+
+	if !found {
+		return nil, 0, ErrShoppingItemNotFound
+	}
+
+	updatedItemsRaw, err := json.Marshal(items)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to marshal updated items: %w", err)
+	}
+
+	// Update shopping_lists JSON items
+	queryUpdateSL := `
+		UPDATE shopping_lists
+		SET items = $3::jsonb
+		WHERE id = $1 AND user_id = $2
+	`
+	_, err = tx.Exec(ctx, queryUpdateSL, id, userID, string(updatedItemsRaw))
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to update shopping list items: %w", err)
+	}
+
+	// Update meal_selections total price
+	queryUpdateMS := `
+		UPDATE meal_selections
+		SET total_estimated_price = $2
+		WHERE id = $1
+	`
+	_, err = tx.Exec(ctx, queryUpdateMS, mealSelectionID, newTotalEstimatedPrice)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to update meal selection total price: %w", err)
+	}
+
+	// Insert into ingredient_price_log for Crowdsource Price Watch
+	insertPriceLogQuery := `
+		INSERT INTO ingredient_price_log (ingredient_name, city_id, price, source, confidence_score, recorded_at)
+		VALUES ($1, $2, $3, 'crowdsource', 0.90, NOW())
+	`
+	_, _ = tx.Exec(ctx, insertPriceLogQuery, ingredientName, cityID, newPrice)
+
+	// Award credit (100 credits) to user for reporting real market price
+	creditQuery := `
+		INSERT INTO user_credits (user_id, balance, updated_at)
+		VALUES ($1, 100, NOW())
+		ON CONFLICT (user_id) DO UPDATE SET balance = user_credits.balance + 100, updated_at = NOW()
+	`
+	_, _ = tx.Exec(ctx, creditQuery, userID)
+
+	creditTxQuery := `
+		INSERT INTO credit_transactions (user_id, amount, type, reference_id, created_at)
+		VALUES ($1, 100, 'earn_shopping_list_report', $2, NOW())
+	`
+	_, _ = tx.Exec(ctx, creditTxQuery, userID, id)
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, 0, fmt.Errorf("failed to commit price update transaction: %w", err)
+	}
+
+	return updatedItem, newTotalEstimatedPrice, nil
 }

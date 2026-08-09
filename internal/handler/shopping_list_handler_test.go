@@ -49,6 +49,23 @@ func (m *MockShoppingListRepository) UpdateShoppingListItemChecklist(ctx context
 	}, nil
 }
 
+func (m *MockShoppingListRepository) UpdateShoppingListItemPrice(ctx context.Context, id int, userID string, ingredientName string, newPrice int) (*model.ShoppingItem, int, error) {
+	if m.mockErr != nil {
+		return nil, 0, m.mockErr
+	}
+	if m.mockItem != nil {
+		m.mockItem.EstimatedPrice = newPrice
+		return m.mockItem, newPrice, nil
+	}
+	return &model.ShoppingItem{
+		IngredientName: ingredientName,
+		Quantity:       "1",
+		Unit:           "papan",
+		EstimatedPrice: newPrice,
+		IsChecked:      false,
+	}, newPrice, nil
+}
+
 func setupShoppingListTestApp(repo *MockShoppingListRepository) *fiber.App {
 	app := fiber.New()
 	h := NewShoppingListHandler(repo)
