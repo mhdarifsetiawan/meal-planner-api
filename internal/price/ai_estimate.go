@@ -52,7 +52,7 @@ func (p *AIEstimateProvider) GetIngredientPrice(ctx context.Context, name string
 
 		query := `
 			SELECT price, source, COALESCE(confidence_score, 0.8)
-			FROM ingredient_price_logs
+			FROM ingredient_price_log
 			WHERE LOWER(ingredient_name) = LOWER($1)
 			  AND (city_id = $2 OR city_id IS NULL OR $2 IS NULL)
 			ORDER BY recorded_at DESC
@@ -86,7 +86,7 @@ func (p *AIEstimateProvider) GetIngredientPrice(ctx context.Context, name string
 	// 3. Log newly estimated price into DB if available
 	if p.db != nil {
 		insertQuery := `
-			INSERT INTO ingredient_price_logs (ingredient_name, city_id, price, source, confidence_score, recorded_at)
+			INSERT INTO ingredient_price_log (ingredient_name, city_id, price, source, confidence_score, recorded_at)
 			VALUES ($1, $2, $3, 'ai_estimate', $4, NOW())
 		`
 		_, _ = p.db.Exec(ctx, insertQuery, cleanName, cityID, estimatedPrice, confidence)
@@ -99,4 +99,29 @@ func (p *AIEstimateProvider) GetIngredientPrice(ctx context.Context, name string
 		Source:          SourceAIEstimate,
 		ConfidenceScore: confidence,
 	}, nil
+}
+
+func (p *AIEstimateProvider) GetIngredientPricesBatch(ctx context.Context, names []string, cityID *int) (map[string]*IngredientPrice, error) {
+	result := make(map[string]*IngredientPrice)
+	if len(names) == 0 {
+		return result, nil
+	}
+
+	// Deduplicate names
+	nameMap := make(map[string]bool)
+	for _, n := range names {
+		trimmed := strings.TrimSpace(n)
+		if trimmed != "" && !nameMap[trimmed] {
+			nameMap[trimmed] = true
+		}
+	}
+
+	for n := range nameMap {
+		priceRes, err := p.GetIngredientPrice(ctx, n, cityID)
+		if err == nil && priceRes != nil {
+			result[strings.ToLower(n)] = priceRes
+		}
+	}
+
+	return result, nil
 }

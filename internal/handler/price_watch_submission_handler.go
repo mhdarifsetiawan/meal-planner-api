@@ -40,11 +40,11 @@ func (h *PriceWatchSubmissionHandler) HandleSubmitPrice(c *fiber.Ctx) error {
 	}
 
 	var req CreateSubmissionRequest
-	if err := c.BodyParser(&req); err != nil || req.WatchItemID <= 0 || req.SubmittedPrice <= 0 {
+	if err := c.BodyParser(&req); err != nil || req.WatchItemID <= 0 || req.SubmittedPrice <= 0 || req.SubmittedPrice > 10_000_000 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"data": nil,
 			"error": fiber.Map{
-				"message": "Invalid request body: watch_item_id and submitted_price (> 0) are required",
+				"message": "Invalid request body: watch_item_id and realistic submitted_price (1 - 10.000.000) are required",
 			},
 		})
 	}

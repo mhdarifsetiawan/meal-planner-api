@@ -5,21 +5,49 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sync"
+	"time"
 	"meal-planner-api/internal/model"
 	"meal-planner-api/internal/repository"
 )
 
+type cachedProvider struct {
+	provider   AIProvider
+	config     *model.AIProviderConfig
+	fetchedAt  time.Time
+}
+
 type DynamicAIProvider struct {
 	configRepo repository.AIConfigRepository
+	mu         sync.RWMutex
+	cache      *cachedProvider
+	cacheTTL   time.Duration
 }
 
 func NewDynamicAIProvider(configRepo repository.AIConfigRepository) *DynamicAIProvider {
 	return &DynamicAIProvider{
 		configRepo: configRepo,
+		cacheTTL:   1 * time.Minute,
 	}
 }
 
 func (d *DynamicAIProvider) resolveActiveProvider(ctx context.Context) (AIProvider, *model.AIProviderConfig, error) {
+	d.mu.RLock()
+	if d.cache != nil && time.Since(d.cache.fetchedAt) < d.cacheTTL {
+		p, c := d.cache.provider, d.cache.config
+		d.mu.RUnlock()
+		return p, c, nil
+	}
+	d.mu.RUnlock()
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	// Double check cache after acquiring write lock
+	if d.cache != nil && time.Since(d.cache.fetchedAt) < d.cacheTTL {
+		return d.cache.provider, d.cache.config, nil
+	}
+
 	activeConfig, err := d.configRepo.GetActiveConfig(ctx)
 	if err != nil || activeConfig == nil {
 		log.Printf("Warning: Could not get active AI config from DB (%v), falling back to env var checks", err)
@@ -30,6 +58,12 @@ func (d *DynamicAIProvider) resolveActiveProvider(ctx context.Context) (AIProvid
 	if err != nil {
 		log.Printf("Warning: Failed to instantiate %s (%v), attempting fallback", activeConfig.ProviderName, err)
 		return d.resolveFromEnv()
+	}
+
+	d.cache = &cachedProvider{
+		provider:  provider,
+		config:    activeConfig,
+		fetchedAt: time.Now(),
 	}
 
 	return provider, activeConfig, nil

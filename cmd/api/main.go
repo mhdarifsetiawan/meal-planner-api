@@ -102,8 +102,13 @@ func main() {
 
 	// Middleware global
 	app.Use(recover.New())
+	allowedOrigins := os.Getenv("ALLOWED_ORIGINS")
+	if allowedOrigins == "" {
+		allowedOrigins = "http://localhost:3000,http://localhost:3001,https://masakapa-api.fly.dev"
+	}
+
 	app.Use(cors.New(cors.Config{
-		AllowOrigins: "http://localhost:3000,http://localhost:3001,https://masakapa-api.fly.dev,https://*.vercel.app",
+		AllowOrigins: allowedOrigins,
 		AllowMethods: "GET,POST,PUT,PATCH,DELETE,OPTIONS",
 		AllowHeaders: "Origin,Content-Type,Accept,Authorization",
 	}))
@@ -167,7 +172,7 @@ func main() {
 	consensusJob := job.NewConsensusJob(dbPool)
 	adminPWHandler := handler.NewAdminPriceWatchHandler(pwRepo, consensusJob)
 
-	admin := api.Group("/admin", auth.RequireAuth(userRepo))
+	admin := api.Group("/admin", auth.RequireAuth(userRepo), auth.RequireAdmin())
 	admin.Get("/ai-config", adminAIConfigHandler.HandleGetConfigs)
 	admin.Post("/ai-config", adminAIConfigHandler.HandleSelectConfig)
 

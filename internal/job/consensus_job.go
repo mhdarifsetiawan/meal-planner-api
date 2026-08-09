@@ -125,38 +125,58 @@ func (j *ConsensusJob) RunConsensusValidation(ctx context.Context, minSubmission
 		lowerBound := median * (1.0 - (tolerancePercent / 100.0))
 		upperBound := median * (1.0 + (tolerancePercent / 100.0))
 
-		// Evaluate each submission
+		// Evaluate each submission within an atomic DB transaction
 		for _, s := range subs {
 			val := float64(s.submittedPrice)
 			if val >= lowerBound && val <= upperBound {
-				// Mark validated
-				if _, err := j.db.Exec(ctx, "UPDATE price_submissions SET status = 'validated', validated_at = NOW() WHERE id = $1", s.id); err != nil {
-					fmt.Printf("Err update: %v\n", err)
+				tx, err := j.db.Begin(ctx)
+				if err != nil {
+					fmt.Printf("Err tx begin: %v\n", err)
+					continue
 				}
 
-				// Log to ingredient_price_log
-				if _, err := j.db.Exec(ctx, `
+				// 1. Mark validated
+				if _, err := tx.Exec(ctx, "UPDATE price_submissions SET status = 'validated', validated_at = NOW() WHERE id = $1", s.id); err != nil {
+					_ = tx.Rollback(ctx)
+					fmt.Printf("Err update: %v\n", err)
+					continue
+				}
+
+				// 2. Log to ingredient_price_log
+				if _, err := tx.Exec(ctx, `
 					INSERT INTO ingredient_price_log (ingredient_name, city_id, price, source, confidence_score)
 					VALUES ($1, $2, $3, 'crowdsource', 0.9)
 				`, ingredientName, gk.cityID, s.submittedPrice); err != nil {
+					_ = tx.Rollback(ctx)
 					fmt.Printf("Err log: %v\n", err)
+					continue
 				}
 
-				// Award credit
-				if _, err := j.db.Exec(ctx, `
+				// 3. Award credit
+				if _, err := tx.Exec(ctx, `
 					INSERT INTO user_credits (user_id, balance, updated_at)
 					VALUES ($1, 1, NOW())
 					ON CONFLICT (user_id) DO UPDATE SET balance = user_credits.balance + 1, updated_at = NOW()
 				`, s.userID); err != nil {
+					_ = tx.Rollback(ctx)
 					fmt.Printf("Err credit: %v\n", err)
+					continue
 				}
 
-				// Record credit transaction
-				if _, err := j.db.Exec(ctx, `
+				// 4. Record credit transaction
+				if _, err := tx.Exec(ctx, `
 					INSERT INTO credit_transactions (user_id, amount, type, reference_id)
 					VALUES ($1, 1, 'earn_submission', $2)
 				`, s.userID, s.id); err != nil {
+					_ = tx.Rollback(ctx)
 					fmt.Printf("Err credit_tx: %v\n", err)
+					continue
+				}
+
+				if err := tx.Commit(ctx); err != nil {
+					_ = tx.Rollback(ctx)
+					fmt.Printf("Err tx commit: %v\n", err)
+					continue
 				}
 
 				summary.ValidatedCount++

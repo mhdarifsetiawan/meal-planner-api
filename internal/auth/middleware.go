@@ -184,7 +184,7 @@ func RequireAuth(roleQuerier ...RoleQuerier) fiber.Handler {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 				"data": nil,
 				"error": fiber.Map{
-					"message": fmt.Sprintf("Unauthorized: Invalid or expired token (%v)", err),
+					"message": "Unauthorized: Invalid or expired token",
 				},
 			})
 		}

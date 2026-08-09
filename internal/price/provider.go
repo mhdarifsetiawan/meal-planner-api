@@ -21,4 +21,5 @@ type IngredientPrice struct {
 
 type PriceProvider interface {
 	GetIngredientPrice(ctx context.Context, name string, cityID *int) (*IngredientPrice, error)
+	GetIngredientPricesBatch(ctx context.Context, names []string, cityID *int) (map[string]*IngredientPrice, error)
 }

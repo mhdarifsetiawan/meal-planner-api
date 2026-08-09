@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"meal-planner-api/internal/ai"
 	"meal-planner-api/internal/auth"
@@ -91,6 +92,9 @@ func (h *MenuHandler) HandleGenerateMenu(c *fiber.Ctx) error {
 		})
 	}
 
+	// 1b. Immediately increment generation count to prevent race conditions during long-running AI calls
+	_ = h.rateLimiter.Increment(ctx, userID)
+
 	// 2. Fetch User Preferences
 	pref, err := h.userRepo.GetUserPreferencesByUserID(ctx, userID)
 	if err != nil || pref == nil {
@@ -166,19 +170,28 @@ func (h *MenuHandler) HandleGenerateMenu(c *fiber.Ctx) error {
 		})
 	}
 
-	// 6. Enrich ingredient prices using PriceProvider if available
+	// 6. Enrich ingredient prices using PriceProvider in batch (eliminates N+1 query overhead)
 	if h.priceProvider != nil && menuOpts != nil {
+		var ingredientNames []string
+		for i := range menuOpts.Options {
+			for j := range menuOpts.Options[i].Ingredients {
+				if menuOpts.Options[i].Ingredients[j].EstimatedPrice <= 0 {
+					ingredientNames = append(ingredientNames, menuOpts.Options[i].Ingredients[j].Name)
+				}
+			}
+		}
+
+		batchPrices, _ := h.priceProvider.GetIngredientPricesBatch(ctx, ingredientNames, cityID)
+
 		for i := range menuOpts.Options {
 			opt := &menuOpts.Options[i]
 			totalPrice := 0
 			for j := range opt.Ingredients {
 				ing := &opt.Ingredients[j]
-				// If AI didn't provide ingredient estimated price, fallback to PriceProvider catalog
-				if ing.EstimatedPrice <= 0 {
-					priceRes, pErr := h.priceProvider.GetIngredientPrice(ctx, ing.Name, cityID)
-					if pErr == nil && priceRes != nil && priceRes.Price > 0 {
-						ing.EstimatedPrice = priceRes.Price
-						ing.PriceSource = string(priceRes.Source)
+				if ing.EstimatedPrice <= 0 && batchPrices != nil {
+					if pRes, found := batchPrices[strings.ToLower(strings.TrimSpace(ing.Name))]; found && pRes != nil && pRes.Price > 0 {
+						ing.EstimatedPrice = pRes.Price
+						ing.PriceSource = string(pRes.Source)
 					}
 				}
 				if ing.PriceSource == "" {
@@ -192,10 +205,7 @@ func (h *MenuHandler) HandleGenerateMenu(c *fiber.Ctx) error {
 		}
 	}
 
-	// 7. Increment generation count upon success
-	_ = h.rateLimiter.Increment(ctx, userID)
-
-	// 8. Persist generated options in user_menu_generations for session retention & history
+	// 7. Persist generated options in user_menu_generations for session retention & history
 	if h.menuRepo != nil && menuOpts != nil && len(menuOpts.Options) > 0 {
 		_ = h.menuRepo.SaveMenuGeneration(ctx, userID, menuOpts.Options)
 	}
