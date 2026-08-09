@@ -146,13 +146,15 @@ func main() {
 	api := app.Group("/api/v1")
 
 	// Profile route
-	api.Get("/me", auth.RequireAuth(), func(c *fiber.Ctx) error {
+	api.Get("/me", auth.RequireAuth(userRepo), func(c *fiber.Ctx) error {
 		userID, _ := auth.GetUserID(c)
 		email := auth.GetUserEmail(c)
+		role, _ := c.Locals(auth.LocalUserRoleKey).(string)
 		return c.JSON(fiber.Map{
 			"data": fiber.Map{
 				"user_id": userID,
 				"email":   email,
+				"role":    role,
 			},
 			"error": nil,
 		})
@@ -162,28 +164,28 @@ func main() {
 	api.Get("/cities", regionHandler.HandleGetCities)
 
 	// Onboarding & Preferences endpoints
-	api.Post("/onboarding", auth.RequireAuth(), onboardingHandler.HandleOnboarding)
-	api.Get("/preferences", auth.RequireAuth(), onboardingHandler.HandleGetPreferences)
+	api.Post("/onboarding", auth.RequireAuth(userRepo), onboardingHandler.HandleOnboarding)
+	api.Get("/preferences", auth.RequireAuth(userRepo), onboardingHandler.HandleGetPreferences)
 
 	// Menu select endpoint
-	api.Post("/menu/select", auth.RequireAuth(), menuSelectHandler.HandleSelectMenu)
+	api.Post("/menu/select", auth.RequireAuth(userRepo), menuSelectHandler.HandleSelectMenu)
 
 	// Shopping list endpoints
-	api.Get("/shopping-list/:id", auth.RequireAuth(), shoppingListHandler.HandleGetShoppingList)
-	api.Patch("/shopping-list/:id/item", auth.RequireAuth(), shoppingListHandler.HandleUpdateShoppingListItem)
+	api.Get("/shopping-list/:id", auth.RequireAuth(userRepo), shoppingListHandler.HandleGetShoppingList)
+	api.Patch("/shopping-list/:id/item", auth.RequireAuth(userRepo), shoppingListHandler.HandleUpdateShoppingListItem)
 
 	// History endpoint
-	api.Get("/history", auth.RequireAuth(), historyHandler.HandleGetHistory)
+	api.Get("/history", auth.RequireAuth(userRepo), historyHandler.HandleGetHistory)
 
 	// Subscription endpoint
-	api.Post("/subscription/subscribe", auth.RequireAuth(), subHandler.HandleSubscribe)
+	api.Post("/subscription/subscribe", auth.RequireAuth(userRepo), subHandler.HandleSubscribe)
 
 	// Admin Price Watch endpoints
 	pwRepo := repository.NewPriceWatchRepository(dbPool)
 	consensusJob := job.NewConsensusJob(dbPool)
 	adminPWHandler := handler.NewAdminPriceWatchHandler(pwRepo, consensusJob)
 
-	admin := api.Group("/admin", auth.RequireAuth(), auth.RequireAdmin())
+	admin := api.Group("/admin", auth.RequireAuth(userRepo), auth.RequireAdmin())
 	admin.Post("/price-watch/campaigns", adminPWHandler.HandleCreateCampaign)
 	admin.Get("/price-watch/campaigns", adminPWHandler.HandleGetCampaigns)
 	admin.Get("/price-watch/campaigns/:id", adminPWHandler.HandleGetCampaignByID)
@@ -198,18 +200,18 @@ func main() {
 	userPWHandler := handler.NewUserPriceWatchHandler(pwRepo)
 	pwSubHandler := handler.NewPriceWatchSubmissionHandler(pwRepo, userRepo)
 
-	api.Get("/price-watch/campaigns/active", auth.RequireAuth(), userPWHandler.HandleGetActiveCampaigns)
-	api.Get("/price-watch/submissions/me", auth.RequireAuth(), userPWHandler.HandleGetUserSubmissions)
-	api.Post("/price-watch/submissions", auth.RequireAuth(), pwSubHandler.HandleSubmitPrice)
+	api.Get("/price-watch/campaigns/active", auth.RequireAuth(userRepo), userPWHandler.HandleGetActiveCampaigns)
+	api.Get("/price-watch/submissions/me", auth.RequireAuth(userRepo), userPWHandler.HandleGetUserSubmissions)
+	api.Post("/price-watch/submissions", auth.RequireAuth(userRepo), pwSubHandler.HandleSubmitPrice)
 
 	// User Credits endpoint
 	creditRepo := repository.NewCreditRepository(dbPool)
 	creditHandler := handler.NewCreditHandler(creditRepo)
-	api.Get("/credits/me", auth.RequireAuth(), creditHandler.HandleGetMyCredits)
+	api.Get("/credits/me", auth.RequireAuth(userRepo), creditHandler.HandleGetMyCredits)
 
 	// Menu generate endpoint
 	if menuHandler != nil {
-		api.Post("/menu/generate", auth.RequireAuth(), menuHandler.HandleGenerateMenu)
+		api.Post("/menu/generate", auth.RequireAuth(userRepo), menuHandler.HandleGenerateMenu)
 	}
 
 	port := os.Getenv("PORT")

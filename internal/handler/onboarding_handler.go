@@ -112,12 +112,12 @@ func (h *OnboardingHandler) HandleOnboarding(c *fiber.Ctx) error {
 
 	ctx := c.Context()
 
-	// 1. Ensure User record exists
+	// 1. Ensure User record exists (role intentionally omitted — DB preserves existing role for admins)
 	user := &model.User{
 		ID:     userID,
 		Email:  email,
 		CityID: req.CityID,
-		Role:   "user",
+		Role:   "", // empty: DB ON CONFLICT will NOT overwrite existing role (preserves 'admin')
 	}
 	if err := h.userRepo.CreateUser(ctx, user); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{

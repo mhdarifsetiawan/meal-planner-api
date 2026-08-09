@@ -17,6 +17,7 @@ var ErrUserPreferenceNotFound = errors.New("user preferences not found")
 type UserRepository interface {
 	CreateUser(ctx context.Context, user *model.User) error
 	GetUserByID(ctx context.Context, id string) (*model.User, error)
+	GetUserRoleByID(ctx context.Context, id string) (string, error)
 	UpdateUser(ctx context.Context, user *model.User) error
 	UpsertUserPreferences(ctx context.Context, pref *model.UserPreference) error
 	GetUserPreferencesByUserID(ctx context.Context, userID string) (*model.UserPreference, error)
@@ -62,6 +63,19 @@ func (r *pgxUserRepository) GetUserByID(ctx context.Context, id string) (*model.
 		return nil, fmt.Errorf("failed to get user by id: %w", err)
 	}
 	return u, nil
+}
+
+func (r *pgxUserRepository) GetUserRoleByID(ctx context.Context, id string) (string, error) {
+	var role string
+	query := `SELECT role FROM users WHERE id = $1`
+	err := r.db.QueryRow(ctx, query, id).Scan(&role)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "user", nil // default to 'user' if not found in DB yet
+		}
+		return "user", fmt.Errorf("failed to get user role: %w", err)
+	}
+	return role, nil
 }
 
 func (r *pgxUserRepository) UpdateUser(ctx context.Context, user *model.User) error {

@@ -1,9 +1,11 @@
 package auth
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
@@ -12,6 +14,19 @@ import (
 )
 
 const testSecret = "super-secret-jwt-key-for-unit-tests-12345"
+
+// mockRoleQuerier implements RoleQuerier for tests.
+// It returns the role based on a pre-defined map: userID → role.
+type mockRoleQuerier struct {
+	roles map[string]string
+}
+
+func (m *mockRoleQuerier) GetUserRoleByID(_ context.Context, id string) (string, error) {
+	if role, ok := m.roles[id]; ok {
+		return role, nil
+	}
+	return "user", nil // default
+}
 
 func generateTestToken(secret string, userID string, email string, role string, expired bool) (string, error) {
 	exp := time.Now().Add(1 * time.Hour)
@@ -33,11 +48,22 @@ func generateTestToken(secret string, userID string, email string, role string, 
 	return token.SignedString([]byte(secret))
 }
 
+// setupTestApp sets up a Fiber app with a mockRoleQuerier that
+// treats "admin-uuid-999" as admin and everyone else as user.
 func setupTestApp() *fiber.App {
+	// Set the env var so RequireAuth can verify HMAC tokens in tests
+	os.Setenv("SUPABASE_JWT_SECRET", testSecret)
+
+	roleQuerier := &mockRoleQuerier{
+		roles: map[string]string{
+			"admin-uuid-999": "admin",
+		},
+	}
+
 	app := fiber.New()
 
 	// Protected endpoint
-	app.Get("/protected", RequireAuth(testSecret), func(c *fiber.Ctx) error {
+	app.Get("/protected", RequireAuth(roleQuerier), func(c *fiber.Ctx) error {
 		userID, err := GetUserID(c)
 		if err != nil {
 			return c.Status(500).SendString(err.Error())
@@ -53,7 +79,7 @@ func setupTestApp() *fiber.App {
 	})
 
 	// Admin endpoint
-	app.Get("/admin", RequireAuth(testSecret), RequireAdmin(), func(c *fiber.Ctx) error {
+	app.Get("/admin", RequireAuth(roleQuerier), RequireAdmin(), func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{
 			"data":  "welcome admin",
 			"error": nil,
@@ -167,6 +193,7 @@ func TestRequireAuth_ValidTokenSuccess(t *testing.T) {
 func TestRequireAdmin_ForbiddenForNormalUser(t *testing.T) {
 	app := setupTestApp()
 
+	// "user-uuid-123" is NOT in mockRoleQuerier as admin → role = "user"
 	token, _ := generateTestToken(testSecret, "user-uuid-123", "user@test.com", "user", false)
 	req := httptest.NewRequest("GET", "/admin", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -183,7 +210,8 @@ func TestRequireAdmin_ForbiddenForNormalUser(t *testing.T) {
 func TestRequireAdmin_AllowedForAdminUser(t *testing.T) {
 	app := setupTestApp()
 
-	token, _ := generateTestToken(testSecret, "admin-uuid-999", "admin@masakapa.com", "admin", false)
+	// "admin-uuid-999" IS in mockRoleQuerier as admin → role = "admin" from DB
+	token, _ := generateTestToken(testSecret, "admin-uuid-999", "admin@masakapa.com", "user", false)
 	req := httptest.NewRequest("GET", "/admin", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	resp, err := app.Test(req)

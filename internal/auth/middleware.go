@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"encoding/base64"
@@ -30,6 +31,12 @@ var (
 	ErrInvalidToken      = errors.New("invalid or expired token")
 	ErrUserNotContext    = errors.New("user_id not found in context")
 )
+
+// RoleQuerier is a minimal interface for fetching user role from the database.
+// This avoids circular imports between auth and repository packages.
+type RoleQuerier interface {
+	GetUserRoleByID(ctx context.Context, id string) (string, error)
+}
 
 type JWKSKey struct {
 	Kid string `json:"kid"`
@@ -128,14 +135,11 @@ type SupabaseClaims struct {
 }
 
 // RequireAuth returns a Fiber middleware that validates Supabase JWT from Authorization header.
-func RequireAuth(jwtSecret ...string) fiber.Handler {
+// If a RoleQuerier is provided, the user's role is fetched from the database (source of truth).
+// Otherwise, the JWT claim's top-level role field is used as fallback.
+func RequireAuth(roleQuerier ...RoleQuerier) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		secret := ""
-		if len(jwtSecret) > 0 && jwtSecret[0] != "" {
-			secret = jwtSecret[0]
-		} else {
-			secret = os.Getenv("SUPABASE_JWT_SECRET")
-		}
+		secret := os.Getenv("SUPABASE_JWT_SECRET")
 
 		authHeader := c.Get("Authorization")
 		if authHeader == "" {
@@ -195,10 +199,19 @@ func RequireAuth(jwtSecret ...string) fiber.Handler {
 			})
 		}
 
+		// Determine role: prefer DB lookup (source of truth) over JWT claim
+		role := "user"
+		if len(roleQuerier) > 0 && roleQuerier[0] != nil {
+			dbRole, err := roleQuerier[0].GetUserRoleByID(c.Context(), userID)
+			if err == nil {
+				role = dbRole
+			}
+		}
+
 		// Save user information into Fiber context locals
 		c.Locals(LocalUserIDKey, userID)
 		c.Locals(LocalEmailKey, claims.Email)
-		c.Locals(LocalUserRoleKey, claims.Role)
+		c.Locals(LocalUserRoleKey, role)
 
 		return c.Next()
 	}

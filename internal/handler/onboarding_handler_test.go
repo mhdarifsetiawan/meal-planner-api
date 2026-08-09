@@ -52,6 +52,13 @@ func (m *MockUserRepository) UpsertUserPreferences(ctx context.Context, pref *mo
 	return nil
 }
 
+func (m *MockUserRepository) GetUserRoleByID(ctx context.Context, id string) (string, error) {
+	if u, ok := m.users[id]; ok {
+		return u.Role, nil
+	}
+	return "user", nil
+}
+
 func (m *MockUserRepository) GetUserPreferencesByUserID(ctx context.Context, userID string) (*model.UserPreference, error) {
 	p, ok := m.prefs[userID]
 	if !ok {
@@ -118,7 +125,7 @@ func TestHandleOnboarding_ValidationErrors(t *testing.T) {
 		},
 		{
 			name:       "Invalid Budget Period",
-			payload:    `{"goal":"hemat","budget_amount":50000,"budget_period":"bulanan","household_size":2}`,
+			payload:    `{"goal":"hemat","budget_amount":50000,"budget_period":"tahunan","household_size":2}`,
 			expectCode: 400,
 		},
 	}
