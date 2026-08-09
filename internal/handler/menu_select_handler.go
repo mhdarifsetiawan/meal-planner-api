@@ -12,10 +12,11 @@ import (
 )
 
 type SelectMenuRequest struct {
-	RecipeName          string            `json:"recipe_name"`
-	Description         string            `json:"description"`
-	EstimatedTotalPrice int               `json:"estimated_total_price"`
-	GoalTags            []string          `json:"goal_tags"`
+	RecipeName          string              `json:"recipe_name"`
+	Description         string              `json:"description"`
+	EstimatedTotalPrice int                 `json:"estimated_total_price"`
+	TotalEstimatedPrice int                 `json:"total_estimated_price"`
+	GoalTags            []string            `json:"goal_tags"`
 	Ingredients         []ai.MenuIngredient `json:"ingredients"`
 }
 
@@ -66,10 +67,20 @@ func (h *MenuSelectHandler) HandleSelectMenu(c *fiber.Ctx) error {
 		})
 	}
 
+	totalPrice := req.EstimatedTotalPrice
+	if totalPrice <= 0 && req.TotalEstimatedPrice > 0 {
+		totalPrice = req.TotalEstimatedPrice
+	}
+	if totalPrice <= 0 {
+		for _, ing := range req.Ingredients {
+			totalPrice += ing.EstimatedPrice
+		}
+	}
+
 	recipe := &model.Recipe{
 		Name:                req.RecipeName,
 		Description:         req.Description,
-		EstimatedTotalPrice: req.EstimatedTotalPrice,
+		EstimatedTotalPrice: totalPrice,
 	}
 
 	var ingredients []model.RecipeIngredient
