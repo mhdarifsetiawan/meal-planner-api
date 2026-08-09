@@ -10,7 +10,6 @@ primary_region = "sin"   # Singapore — dekat dengan Supabase ap-southeast-2
 [env]
   PORT = "8080"
   ENV  = "production"
-  ALLOWED_ORIGINS = "http://localhost:3000,http://localhost:3001,https://masakapa-api.fly.dev,https://meal-panner-web-user.vercel.app,https://meal-panner-web-admin.vercel.app"
 
 [http_service]
   internal_port       = 8080
