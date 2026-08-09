@@ -269,20 +269,6 @@ func (r *pgxShoppingListRepository) UpdateShoppingListItemPrice(
 	`
 	_, _ = tx.Exec(ctx, insertPriceLogQuery, ingredientName, cityID, unitPriceToLog)
 
-	// Award credit (100 credits) to user for reporting real market price
-	creditQuery := `
-		INSERT INTO user_credits (user_id, balance, updated_at)
-		VALUES ($1, 100, NOW())
-		ON CONFLICT (user_id) DO UPDATE SET balance = user_credits.balance + 100, updated_at = NOW()
-	`
-	_, _ = tx.Exec(ctx, creditQuery, userID)
-
-	creditTxQuery := `
-		INSERT INTO credit_transactions (user_id, amount, type, reference_id, created_at)
-		VALUES ($1, 100, 'earn_shopping_list_report', $2, NOW())
-	`
-	_, _ = tx.Exec(ctx, creditTxQuery, userID, id)
-
 	if err := tx.Commit(ctx); err != nil {
 		return nil, 0, fmt.Errorf("failed to commit price update transaction: %w", err)
 	}
