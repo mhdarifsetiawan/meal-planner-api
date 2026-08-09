@@ -178,10 +178,15 @@ func main() {
 
 	admin.Get("/price-watch/campaigns", adminPWHandler.HandleGetCampaigns)
 	admin.Post("/price-watch/campaigns", adminPWHandler.HandleCreateCampaign)
+	admin.Get("/price-watch/campaigns/:id", adminPWHandler.HandleGetCampaignByID)
 	admin.Put("/price-watch/campaigns/:id", adminPWHandler.HandleUpdateCampaign)
+	admin.Patch("/price-watch/campaigns/:id", adminPWHandler.HandleUpdateCampaign)
 	admin.Delete("/price-watch/campaigns/:id", adminPWHandler.HandleDeleteCampaign)
+
+	admin.Post("/price-watch/campaigns/:id/items", adminPWHandler.HandleCreateItem)
 	admin.Post("/price-watch/items", adminPWHandler.HandleCreateItem)
 	admin.Put("/price-watch/items/:item_id", adminPWHandler.HandleUpdateItem)
+	admin.Patch("/price-watch/items/:item_id", adminPWHandler.HandleUpdateItem)
 	admin.Delete("/price-watch/items/:item_id", adminPWHandler.HandleDeleteItem)
 	admin.Post("/price-watch/run-consensus", adminPWHandler.HandleRunConsensus)
 	admin.Get("/price-watch/submissions", adminPWHandler.HandleGetAllSubmissions)
