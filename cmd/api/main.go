@@ -161,24 +161,35 @@ func main() {
 	// Subscription endpoint
 	api.Post("/subscription/subscribe", auth.RequireAuth(userRepo), subHandler.HandleSubscribe)
 
-	// Admin Price Watch endpoints
+	// Price Watch Admin endpoints
 	pwRepo := repository.NewPriceWatchRepository(dbPool)
 	consensusJob := job.NewConsensusJob(dbPool)
 	adminPWHandler := handler.NewAdminPriceWatchHandler(pwRepo, consensusJob)
 
-	admin := api.Group("/admin", auth.RequireAuth(userRepo), auth.RequireAdmin())
-	admin.Get("/ai/configs", adminAIConfigHandler.HandleGetConfigs)
-	admin.Post("/ai/configs/select", adminAIConfigHandler.HandleSelectConfig)
-	admin.Post("/price-watch/campaigns", adminPWHandler.HandleCreateCampaign)
+	admin := api.Group("/admin", auth.RequireAuth(userRepo))
+	admin.Get("/ai-config", adminAIConfigHandler.HandleGetConfigs)
+	admin.Post("/ai-config", adminAIConfigHandler.HandleSelectConfig)
+
 	admin.Get("/price-watch/campaigns", adminPWHandler.HandleGetCampaigns)
-	admin.Get("/price-watch/campaigns/:id", adminPWHandler.HandleGetCampaignByID)
+	admin.Post("/price-watch/campaigns", adminPWHandler.HandleCreateCampaign)
 	admin.Put("/price-watch/campaigns/:id", adminPWHandler.HandleUpdateCampaign)
 	admin.Delete("/price-watch/campaigns/:id", adminPWHandler.HandleDeleteCampaign)
-	admin.Post("/price-watch/campaigns/:id/items", adminPWHandler.HandleCreateItem)
-	admin.Put("/price-watch/items/:id", adminPWHandler.HandleUpdateItem)
-	admin.Delete("/price-watch/items/:id", adminPWHandler.HandleDeleteItem)
+	admin.Post("/price-watch/items", adminPWHandler.HandleCreateItem)
+	admin.Put("/price-watch/items/:item_id", adminPWHandler.HandleUpdateItem)
+	admin.Delete("/price-watch/items/:item_id", adminPWHandler.HandleDeleteItem)
 	admin.Post("/price-watch/run-consensus", adminPWHandler.HandleRunConsensus)
 	admin.Get("/price-watch/submissions", adminPWHandler.HandleGetAllSubmissions)
+
+	// Master Ingredients Admin endpoints
+	masterIngredientRepo := repository.NewMasterIngredientRepository(dbPool)
+	adminMasterIngredientHandler := handler.NewAdminMasterIngredientHandler(masterIngredientRepo)
+
+	admin.Get("/master-ingredients", adminMasterIngredientHandler.HandleGetAll)
+	admin.Post("/master-ingredients", adminMasterIngredientHandler.HandleCreate)
+	admin.Put("/master-ingredients/:id", adminMasterIngredientHandler.HandleUpdate)
+	admin.Delete("/master-ingredients/:id", adminMasterIngredientHandler.HandleDelete)
+	admin.Post("/master-ingredients/:id/aliases", adminMasterIngredientHandler.HandleAddAlias)
+	admin.Delete("/master-ingredients/aliases/:alias_id", adminMasterIngredientHandler.HandleDeleteAlias)
 
 	// Price Watch User endpoints
 	userPWHandler := handler.NewUserPriceWatchHandler(pwRepo)

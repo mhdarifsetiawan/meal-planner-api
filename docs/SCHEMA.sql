@@ -199,3 +199,25 @@ CREATE TABLE credit_transactions (
     reference_id INT, -- misal price_submissions.id
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- ---------- Master Ingredients & Aliases ----------
+
+CREATE TABLE master_ingredients (
+    id SERIAL PRIMARY KEY,
+    category VARCHAR(100) NOT NULL,
+    name VARCHAR(255) NOT NULL UNIQUE,
+    default_unit VARCHAR(50) NOT NULL DEFAULT 'kg',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE ingredient_aliases (
+    id SERIAL PRIMARY KEY,
+    master_ingredient_id INT NOT NULL REFERENCES master_ingredients(id) ON DELETE CASCADE,
+    alias_name VARCHAR(255) NOT NULL UNIQUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_master_ingredients_category ON master_ingredients(category);
+CREATE INDEX idx_ingredient_aliases_alias_name ON ingredient_aliases(LOWER(alias_name));
+
