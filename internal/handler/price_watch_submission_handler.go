@@ -82,7 +82,18 @@ func (h *PriceWatchSubmissionHandler) HandleSubmitPrice(c *fiber.Ctx) error {
 		})
 	}
 
-	// 3. Create Submission
+	// 3. Check for 24-hour anti-duplication rule
+	hasRecent, err := h.pwRepo.HasRecentSubmission(ctx, userID, req.WatchItemID, cityID)
+	if err == nil && hasRecent {
+		return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
+			"data": nil,
+			"error": fiber.Map{
+				"message": "Anda sudah memberikan laporan harga untuk bahan ini di kota ini dalam 24 jam terakhir.",
+			},
+		})
+	}
+
+	// 4. Create Submission
 	sub := &model.PriceSubmission{
 		WatchItemID:    req.WatchItemID,
 		UserID:         userID,

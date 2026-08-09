@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"strings"
 
 	"meal-planner-api/internal/model"
 
@@ -32,6 +34,17 @@ func NewUserRepository(db *pgxpool.Pool) UserRepository {
 }
 
 func (r *pgxUserRepository) CreateUser(ctx context.Context, user *model.User) error {
+	// Check ADMIN_EMAILS env var for dynamic admin promotion
+	adminEmailsEnv := os.Getenv("ADMIN_EMAILS")
+	if adminEmailsEnv != "" {
+		for _, email := range strings.Split(adminEmailsEnv, ",") {
+			if strings.EqualFold(strings.TrimSpace(email), strings.TrimSpace(user.Email)) {
+				user.Role = "admin"
+				break
+			}
+		}
+	}
+
 	query := `
 		INSERT INTO users (id, email, name, city_id, role, created_at)
 		VALUES ($1, $2, $3, $4, COALESCE(NULLIF($5, ''), 'user'), NOW())

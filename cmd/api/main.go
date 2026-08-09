@@ -178,6 +178,7 @@ func main() {
 	admin.Put("/price-watch/items/:id", adminPWHandler.HandleUpdateItem)
 	admin.Delete("/price-watch/items/:id", adminPWHandler.HandleDeleteItem)
 	admin.Post("/price-watch/run-consensus", adminPWHandler.HandleRunConsensus)
+	admin.Get("/price-watch/submissions", adminPWHandler.HandleGetAllSubmissions)
 
 	// Price Watch User endpoints
 	userPWHandler := handler.NewUserPriceWatchHandler(pwRepo)

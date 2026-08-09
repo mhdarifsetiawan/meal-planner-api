@@ -46,3 +46,15 @@ type UserPriceSubmissionDetail struct {
 	ValidatedAt    *time.Time `json:"validated_at,omitempty"`
 	CreatedAt      time.Time  `json:"created_at"`
 }
+
+type AdminSubmissionDetail struct {
+	ID             int       `json:"id"`
+	UserID         string    `json:"user_id"`
+	IngredientName string    `json:"ingredient_name"`
+	Unit           string    `json:"unit"`
+	CityName       string    `json:"city_name"`
+	CityID         int       `json:"city_id"`
+	SubmittedPrice int       `json:"submitted_price"`
+	Status         string    `json:"status"`
+	CreatedAt      time.Time `json:"created_at"`
+}

@@ -362,3 +362,32 @@ func (h *AdminPriceWatchHandler) HandleRunConsensus(c *fiber.Ctx) error {
 		"error": nil,
 	})
 }
+
+func (h *AdminPriceWatchHandler) HandleGetAllSubmissions(c *fiber.Ctx) error {
+	var cityIDPtr *int
+	if cityStr := c.Query("city_id"); cityStr != "" && cityStr != "all" {
+		if id, err := strconv.Atoi(cityStr); err == nil && id > 0 {
+			cityIDPtr = &id
+		}
+	}
+
+	var statusPtr *string
+	if statusStr := c.Query("status"); statusStr != "" && statusStr != "all" {
+		statusPtr = &statusStr
+	}
+
+	subs, err := h.repo.GetAllSubmissions(c.Context(), cityIDPtr, statusPtr)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"data": nil,
+			"error": fiber.Map{
+				"message": "Failed to fetch submissions: " + err.Error(),
+			},
+		})
+	}
+
+	return c.Status(http.StatusOK).JSON(fiber.Map{
+		"data":  subs,
+		"error": nil,
+	})
+}

@@ -31,6 +31,8 @@ type PriceWatchRepository interface {
 	CreateSubmission(ctx context.Context, sub *model.PriceSubmission) error
 	GetActiveCampaignsWithItems(ctx context.Context) ([]model.PriceWatchCampaign, error)
 	GetUserSubmissions(ctx context.Context, userID string) ([]model.UserPriceSubmissionDetail, error)
+	GetAllSubmissions(ctx context.Context, cityID *int, status *string) ([]model.AdminSubmissionDetail, error)
+	HasRecentSubmission(ctx context.Context, userID string, watchItemID int, cityID int) (bool, error)
 }
 
 type pgxPriceWatchRepository struct {
@@ -371,4 +373,75 @@ func (r *pgxPriceWatchRepository) GetUserSubmissions(ctx context.Context, userID
 	}
 
 	return details, nil
+}
+
+func (r *pgxPriceWatchRepository) GetAllSubmissions(ctx context.Context, cityID *int, status *string) ([]model.AdminSubmissionDetail, error) {
+	if r.db == nil {
+		return nil, fmt.Errorf("database pool is nil")
+	}
+
+	query := `
+		SELECT ps.id, ps.user_id, pwi.ingredient_name, pwi.unit,
+		       c.name AS city_name, ps.city_id, ps.submitted_price, ps.status, ps.created_at
+		FROM price_submissions ps
+		JOIN price_watch_items pwi ON pwi.id = ps.watch_item_id
+		JOIN cities c ON c.id = ps.city_id
+		WHERE ($1::int IS NULL OR ps.city_id = $1)
+		  AND ($2::text IS NULL OR ps.status = $2)
+		ORDER BY ps.created_at DESC
+	`
+
+	rows, err := r.db.Query(ctx, query, cityID, status)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query all submissions: %w", err)
+	}
+	defer rows.Close()
+
+	var details []model.AdminSubmissionDetail
+	for rows.Next() {
+		var d model.AdminSubmissionDetail
+		err := rows.Scan(
+			&d.ID,
+			&d.UserID,
+			&d.IngredientName,
+			&d.Unit,
+			&d.CityName,
+			&d.CityID,
+			&d.SubmittedPrice,
+			&d.Status,
+			&d.CreatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan admin submission detail: %w", err)
+		}
+		details = append(details, d)
+	}
+
+	if details == nil {
+		details = []model.AdminSubmissionDetail{}
+	}
+
+	return details, nil
+}
+
+func (r *pgxPriceWatchRepository) HasRecentSubmission(ctx context.Context, userID string, watchItemID int, cityID int) (bool, error) {
+	if r.db == nil {
+		return false, fmt.Errorf("database pool is nil")
+	}
+
+	query := `
+		SELECT EXISTS (
+			SELECT 1 FROM price_submissions
+			WHERE user_id = $1 AND watch_item_id = $2 AND city_id = $3
+			  AND created_at >= NOW() - INTERVAL '24 hours'
+		)
+	`
+
+	var exists bool
+	err := r.db.QueryRow(ctx, query, userID, watchItemID, cityID).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("failed to check recent submission: %w", err)
+	}
+
+	return exists, nil
 }

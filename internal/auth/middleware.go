@@ -203,8 +203,21 @@ func RequireAuth(roleQuerier ...RoleQuerier) fiber.Handler {
 		role := "user"
 		if len(roleQuerier) > 0 && roleQuerier[0] != nil {
 			dbRole, err := roleQuerier[0].GetUserRoleByID(c.Context(), userID)
-			if err == nil {
+			if err == nil && dbRole != "" {
 				role = dbRole
+			}
+		}
+
+		// Fallback check against ADMIN_EMAILS env var for claims.Email
+		if role != "admin" && claims.Email != "" {
+			adminEmailsEnv := os.Getenv("ADMIN_EMAILS")
+			if adminEmailsEnv != "" {
+				for _, email := range strings.Split(adminEmailsEnv, ",") {
+					if strings.EqualFold(strings.TrimSpace(email), strings.TrimSpace(claims.Email)) {
+						role = "admin"
+						break
+					}
+				}
 			}
 		}
 

@@ -116,6 +116,14 @@ func (m *MockPriceWatchRepository) GetUserSubmissions(ctx context.Context, userI
 	return []model.UserPriceSubmissionDetail{}, nil
 }
 
+func (m *MockPriceWatchRepository) GetAllSubmissions(ctx context.Context, cityID *int, status *string) ([]model.AdminSubmissionDetail, error) {
+	return []model.AdminSubmissionDetail{}, nil
+}
+
+func (m *MockPriceWatchRepository) HasRecentSubmission(ctx context.Context, userID string, watchItemID int, cityID int) (bool, error) {
+	return false, nil
+}
+
 func setupAdminPriceWatchTestApp(repo *MockPriceWatchRepository) *fiber.App {
 	app := fiber.New()
 	h := NewAdminPriceWatchHandler(repo, nil)

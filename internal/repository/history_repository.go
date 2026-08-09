@@ -27,14 +27,32 @@ func (r *pgxHistoryRepository) DeleteHistoryItem(ctx context.Context, userID str
 		return fmt.Errorf("database pool is nil")
 	}
 
-	query := `DELETE FROM meal_selections WHERE id = $1 AND user_id = $2`
-	cmd, err := r.db.Exec(ctx, query, historyID, userID)
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	// 1. Delete associated shopping list if exists
+	_, err = tx.Exec(ctx, `DELETE FROM shopping_lists WHERE meal_selection_id = $1 AND user_id = $2`, historyID, userID)
+	if err != nil {
+		return fmt.Errorf("failed to delete associated shopping list: %w", err)
+	}
+
+	// 2. Delete meal selection
+	cmd, err := tx.Exec(ctx, `DELETE FROM meal_selections WHERE id = $1 AND user_id = $2`, historyID, userID)
 	if err != nil {
 		return fmt.Errorf("failed to delete history item: %w", err)
 	}
 
 	if cmd.RowsAffected() == 0 {
 		return fmt.Errorf("history item not found or unauthorized")
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return nil
