@@ -21,6 +21,18 @@ type MockMenuRepository struct {
 	mockErr    error
 }
 
+func (m *MockMenuRepository) SaveMenuGeneration(ctx context.Context, userID string, options interface{}) error {
+	return nil
+}
+
+func (m *MockMenuRepository) GetLatestMenuGenerationToday(ctx context.Context, userID string) (*model.UserMenuGeneration, error) {
+	return nil, nil
+}
+
+func (m *MockMenuRepository) GetMenuGenerationsHistory(ctx context.Context, userID string, limit int, offset int) ([]model.UserMenuGeneration, int, error) {
+	return []model.UserMenuGeneration{}, 0, nil
+}
+
 func (m *MockMenuRepository) CreateSelectedMenuAndShoppingList(
 	ctx context.Context,
 	userID string,

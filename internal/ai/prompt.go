@@ -50,17 +50,24 @@ func BuildUserPrompt(params MenuGenerateParams) string {
 		restrictionsStr = strings.Join(params.Restrictions, ", ")
 	}
 
-	return fmt.Sprintf(`Target Goal: %s
+	prompt := fmt.Sprintf(`Target Goal: %s
 Budget Amount: Rp %d
 Budget Period: %s
 Jumlah Anggota Keluarga: %d orang
-Pantangan / Alergi: %s
-
-Berikan 3 opsi menu rekomendasi masakan harian Indonesia sesuai parameter di atas!`,
+Pantangan / Alergi: %s`,
 		params.Goal,
 		params.BudgetAmount,
 		params.BudgetPeriod,
 		params.HouseholdSize,
 		restrictionsStr,
 	)
+
+	if len(params.ExcludeRecipes) > 0 {
+		excludeStr := strings.Join(params.ExcludeRecipes, ", ")
+		prompt += fmt.Sprintf("\n\n⚠️ SANGAT PENTING (DILARANG DUPLIKASI):\nJangan menyarankan kembali resep-resep berikut karena sudah pernah disarankan sebelumnya: %s.\nBerikan 3 pilihan resep rekomendasi baru yang 100%% berbeda dari daftar tersebut!", excludeStr)
+	}
+
+	prompt += "\n\nBerikan 3 opsi menu rekomendasi masakan harian Indonesia sesuai parameter di atas!"
+
+	return prompt
 }

@@ -64,7 +64,7 @@ func main() {
 	historyRepo := repository.NewHistoryRepository(dbPool)
 	subRepo := repository.NewSubscriptionRepository(dbPool)
 	aiConfigRepo := repository.NewAIConfigRepository(dbPool)
-	rateLimiter := subscription.NewMemoryRateLimiter()
+	rateLimiter := subscription.NewPostgresRateLimiter(dbPool)
 	priceProvider := price.NewAIEstimateProvider(dbPool)
 	dummyPayment := payment.NewDummyPaymentProvider(0)
 
@@ -80,7 +80,8 @@ func main() {
 	regionHandler := handler.NewRegionHandler(dbPool)
 	adminAIConfigHandler := handler.NewAdminAIConfigHandler(aiConfigRepo)
 
-	menuHandler := handler.NewMenuHandler(dynamicAIProvider, priceProvider, userRepo, subRepo, rateLimiter)
+	menuHandler := handler.NewMenuHandler(dynamicAIProvider, priceProvider, userRepo, subRepo, rateLimiter, menuRepo)
+
 
 	app := fiber.New(fiber.Config{
 		AppName: "MasakApa API v0.1.0",
@@ -204,9 +205,11 @@ func main() {
 	creditHandler := handler.NewCreditHandler(creditRepo)
 	api.Get("/credits/me", auth.RequireAuth(userRepo), creditHandler.HandleGetMyCredits)
 
-	// Menu generate endpoint
+	// Menu generate endpoints
 	if menuHandler != nil {
 		api.Post("/menu/generate", auth.RequireAuth(userRepo), menuHandler.HandleGenerateMenu)
+		api.Get("/menu/latest", auth.RequireAuth(userRepo), menuHandler.HandleGetLatestMenu)
+		api.Get("/menu/generations-history", auth.RequireAuth(userRepo), menuHandler.HandleGetGenerationsHistory)
 	}
 
 	port := os.Getenv("PORT")

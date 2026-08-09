@@ -22,6 +22,7 @@ type MenuHandler struct {
 	priceProvider price.PriceProvider
 	userRepo      repository.UserRepository
 	subRepo       repository.SubscriptionRepository
+	menuRepo      repository.MenuRepository
 	rateLimiter   subscription.RateLimiter
 }
 
@@ -31,13 +32,19 @@ func NewMenuHandler(
 	userRepo repository.UserRepository,
 	subRepo repository.SubscriptionRepository,
 	rateLimiter subscription.RateLimiter,
+	menuRepo ...repository.MenuRepository,
 ) *MenuHandler {
+	var mRepo repository.MenuRepository
+	if len(menuRepo) > 0 {
+		mRepo = menuRepo[0]
+	}
 	return &MenuHandler{
 		aiProvider:    aiProvider,
 		priceProvider: priceProvider,
 		userRepo:      userRepo,
 		subRepo:       subRepo,
 		rateLimiter:   rateLimiter,
+		menuRepo:      mRepo,
 	}
 }
 
@@ -116,13 +123,36 @@ func (h *MenuHandler) HandleGenerateMenu(c *fiber.Ctx) error {
 		_ = json.Unmarshal(pref.Restrictions, &restrictions)
 	}
 
+	// 3b. Fetch previously generated recipe names for anti-duplication
+	var excludedRecipes []string
+	if h.menuRepo != nil {
+		if prevGens, _, gErr := h.menuRepo.GetMenuGenerationsHistory(ctx, userID, 5, 0); gErr == nil {
+			recipeMap := make(map[string]bool)
+			for _, g := range prevGens {
+				if optsSlice, ok := g.Options.([]interface{}); ok {
+					for _, optItem := range optsSlice {
+						if optMap, ok := optItem.(map[string]interface{}); ok {
+							if rName, ok := optMap["recipe_name"].(string); ok && rName != "" {
+								if !recipeMap[rName] {
+									recipeMap[rName] = true
+									excludedRecipes = append(excludedRecipes, rName)
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
 	// 4. Construct AI Params
 	params := ai.MenuGenerateParams{
-		Goal:          pref.Goal,
-		BudgetAmount:  pref.BudgetAmount,
-		BudgetPeriod:  pref.BudgetPeriod,
-		HouseholdSize: pref.HouseholdSize,
-		Restrictions:  restrictions,
+		Goal:           pref.Goal,
+		BudgetAmount:   pref.BudgetAmount,
+		BudgetPeriod:   pref.BudgetPeriod,
+		HouseholdSize:  pref.HouseholdSize,
+		Restrictions:   restrictions,
+		ExcludeRecipes: excludedRecipes,
 	}
 
 	// 5. Generate Menu via AI Provider
@@ -165,8 +195,107 @@ func (h *MenuHandler) HandleGenerateMenu(c *fiber.Ctx) error {
 	// 7. Increment generation count upon success
 	_ = h.rateLimiter.Increment(ctx, userID)
 
+	// 8. Persist generated options in user_menu_generations for session retention & history
+	if h.menuRepo != nil && menuOpts != nil && len(menuOpts.Options) > 0 {
+		_ = h.menuRepo.SaveMenuGeneration(ctx, userID, menuOpts.Options)
+	}
+
 	return c.Status(http.StatusOK).JSON(fiber.Map{
 		"data":  menuOpts,
 		"error": nil,
 	})
 }
+
+func (h *MenuHandler) HandleGetLatestMenu(c *fiber.Ctx) error {
+	userID, err := auth.GetUserID(c)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"data": nil,
+			"error": fiber.Map{
+				"message": "Unauthorized: missing user_id in context",
+			},
+		})
+	}
+
+	if h.menuRepo == nil {
+		return c.Status(http.StatusOK).JSON(fiber.Map{
+			"data": fiber.Map{
+				"options": []interface{}{},
+			},
+			"error": nil,
+		})
+	}
+
+	gen, err := h.menuRepo.GetLatestMenuGenerationToday(c.Context(), userID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"data": nil,
+			"error": fiber.Map{
+				"message": "Failed to fetch latest menu generation: " + err.Error(),
+			},
+		})
+	}
+
+	if gen == nil {
+		return c.Status(http.StatusOK).JSON(fiber.Map{
+			"data": fiber.Map{
+				"options": []interface{}{},
+			},
+			"error": nil,
+		})
+	}
+
+	return c.Status(http.StatusOK).JSON(fiber.Map{
+		"data": fiber.Map{
+			"id":              gen.ID,
+			"options":         gen.Options,
+			"generation_date": gen.GenerationDate,
+			"created_at":      gen.CreatedAt,
+		},
+		"error": nil,
+	})
+}
+
+func (h *MenuHandler) HandleGetGenerationsHistory(c *fiber.Ctx) error {
+	userID, err := auth.GetUserID(c)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"data": nil,
+			"error": fiber.Map{
+				"message": "Unauthorized: missing user_id in context",
+			},
+		})
+	}
+
+	if h.menuRepo == nil {
+		return c.Status(http.StatusOK).JSON(fiber.Map{
+			"data": fiber.Map{
+				"generations": []interface{}{},
+				"total":       0,
+			},
+			"error": nil,
+		})
+	}
+
+	limit := 20
+	offset := 0
+
+	generations, total, err := h.menuRepo.GetMenuGenerationsHistory(c.Context(), userID, limit, offset)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"data": nil,
+			"error": fiber.Map{
+				"message": "Failed to fetch menu generations history: " + err.Error(),
+			},
+		})
+	}
+
+	return c.Status(http.StatusOK).JSON(fiber.Map{
+		"data": fiber.Map{
+			"generations": generations,
+			"total":       total,
+		},
+		"error": nil,
+	})
+}
+

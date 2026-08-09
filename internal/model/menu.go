@@ -83,3 +83,12 @@ type HistoryItem struct {
 	TotalEstimatedPrice int       `json:"total_estimated_price"`
 	CreatedAt           time.Time `json:"created_at"`
 }
+
+type UserMenuGeneration struct {
+	ID             int         `json:"id"`
+	UserID         string      `json:"user_id"`
+	Options        interface{} `json:"options"`
+	GenerationDate time.Time   `json:"generation_date"`
+	CreatedAt      time.Time   `json:"created_at"`
+}
+

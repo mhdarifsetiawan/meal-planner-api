@@ -221,3 +221,24 @@ CREATE TABLE ingredient_aliases (
 CREATE INDEX idx_master_ingredients_category ON master_ingredients(category);
 CREATE INDEX idx_ingredient_aliases_alias_name ON ingredient_aliases(LOWER(alias_name));
 
+-- ---------- User Daily Rate Limiting & AI Generations ----------
+
+CREATE TABLE user_daily_generations (
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    generation_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    count INT NOT NULL DEFAULT 1,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, generation_date)
+);
+
+CREATE TABLE user_menu_generations (
+    id SERIAL PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    options JSONB NOT NULL,
+    generation_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_user_menu_generations_lookup ON user_menu_generations(user_id, created_at DESC);
+
+
