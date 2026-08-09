@@ -35,12 +35,20 @@ func (p *AIEstimateProvider) GetIngredientPrice(ctx context.Context, name string
 		var sourceStr string
 		var confidence float64
 
+		// Use bidirectional LIKE to bridge name variants: "Telur" ↔ "Telur Ayam"
 		query := `
 			SELECT price, source, COALESCE(confidence_score, 0.8)
 			FROM ingredient_price_log
-			WHERE LOWER(ingredient_name) = LOWER($1)
+			WHERE (
+				LOWER(ingredient_name) = LOWER($1)
+				OR LOWER(ingredient_name) LIKE LOWER($1) || '%'
+				OR LOWER($1) LIKE LOWER(ingredient_name) || '%'
+			)
 			  AND (city_id = $2 OR city_id IS NULL OR $2 IS NULL)
-			ORDER BY recorded_at DESC
+			ORDER BY
+				-- Prefer crowdsource over ai_estimate
+				CASE WHEN source = 'crowdsource' THEN 0 ELSE 1 END,
+				recorded_at DESC
 			LIMIT 1
 		`
 		err := p.db.QueryRow(ctx, query, cleanName, cityID).Scan(&price, &sourceStr, &confidence)
