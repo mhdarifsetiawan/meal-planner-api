@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 
 	"meal-planner-api/internal/model"
 
@@ -169,62 +170,74 @@ func (r *pgxShoppingListRepository) UpdateShoppingListItemPrice(
 		}
 	}()
 
-	// Get list ownership + city_id
+	// Fetch list with items JSONB + ownership + city_id
+	var itemsRaw []byte
 	var listUserID string
-	var cityID *int
 	var mealSelectionID int
+	var cityID *int
+
 	err = tx.QueryRow(ctx, `
-		SELECT sl.user_id, sl.meal_selection_id, u.city_id
+		SELECT sl.items, sl.user_id, sl.meal_selection_id, u.city_id
 		FROM shopping_lists sl
 		JOIN users u ON u.id = sl.user_id
 		WHERE sl.id = $1
-	`, id).Scan(&listUserID, &mealSelectionID, &cityID)
+		FOR UPDATE OF sl
+	`, id).Scan(&itemsRaw, &listUserID, &mealSelectionID, &cityID)
 	if err != nil {
-		return nil, 0, false, ErrShoppingListNotFound
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, 0, false, ErrShoppingListNotFound
+		}
+		return nil, 0, false, fmt.Errorf("failed to lock shopping list for price update: %w", err)
 	}
 	if listUserID != userID {
 		return nil, 0, false, ErrShoppingListNotFound
 	}
 
-	// Update item price directly via SQL and capture old price for ratio calculation
-	var updatedItem model.ShoppingItem
-	var oldPortionPrice int
-	// First fetch old price
-	_ = tx.QueryRow(ctx, `
-		SELECT COALESCE(estimated_price, 0)
-		FROM shopping_list_items
-		WHERE shopping_list_id = $1
-		  AND (LOWER(ingredient_name) = LOWER($2) OR LOWER(name) = LOWER($2))
-		LIMIT 1
-	`, id, ingredientName).Scan(&oldPortionPrice)
-
-	// Now UPDATE
-	err = tx.QueryRow(ctx, `
-		UPDATE shopping_list_items
-		SET estimated_price = $1
-		WHERE shopping_list_id = $2
-		  AND (LOWER(ingredient_name) = LOWER($3) OR LOWER(name) = LOWER($3))
-		RETURNING ingredient_name, quantity, unit, is_checked, estimated_price
-	`, newPrice, id, ingredientName).Scan(
-		&updatedItem.IngredientName,
-		&updatedItem.Quantity,
-		&updatedItem.Unit,
-		&updatedItem.IsChecked,
-		&updatedItem.EstimatedPrice,
-	)
-	if err != nil {
-		return nil, 0, false, ErrShoppingItemNotFound
+	// Unmarshal JSONB items
+	var items []model.ShoppingItem
+	if len(itemsRaw) > 0 {
+		if jsonErr := json.Unmarshal(itemsRaw, &items); jsonErr != nil {
+			return nil, 0, false, fmt.Errorf("failed to unmarshal items: %w", jsonErr)
+		}
 	}
 
-	// Recalculate total from all items
-	var newTotalEstimatedPrice int
-	err = tx.QueryRow(ctx, `
-		SELECT COALESCE(SUM(estimated_price), 0)
-		FROM shopping_list_items
-		WHERE shopping_list_id = $1
-	`, id).Scan(&newTotalEstimatedPrice)
+	// Find and update the target item in the slice
+	var updatedItem *model.ShoppingItem
+	var oldPortionPrice int
+	newTotalEstimatedPrice := 0
+
+	for i := range items {
+		name := items[i].IngredientName
+		if name == "" {
+			// some items may use a "name" field alias
+			name = items[i].IngredientName
+		}
+		if strings.EqualFold(name, ingredientName) {
+			oldPortionPrice = items[i].EstimatedPrice
+			items[i].EstimatedPrice = newPrice
+			updatedItem = &items[i]
+		}
+		newTotalEstimatedPrice += items[i].EstimatedPrice
+	}
+
+	if updatedItem == nil {
+		err = ErrShoppingItemNotFound
+		return nil, 0, false, err
+	}
+
+	// Marshal updated items back to JSONB
+	updatedItemsRaw, jsonErr := json.Marshal(items)
+	if jsonErr != nil {
+		err = fmt.Errorf("failed to marshal updated items: %w", jsonErr)
+		return nil, 0, false, err
+	}
+
+	// Write updated JSONB items back to shopping_lists
+	_, err = tx.Exec(ctx, `
+		UPDATE shopping_lists SET items = $3::jsonb WHERE id = $1 AND user_id = $2
+	`, id, userID, string(updatedItemsRaw))
 	if err != nil {
-		return nil, 0, false, fmt.Errorf("failed to sum item prices: %w", err)
+		return nil, 0, false, fmt.Errorf("failed to update shopping list items: %w", err)
 	}
 
 	// Update meal_selections total price
@@ -235,8 +248,8 @@ func (r *pgxShoppingListRepository) UpdateShoppingListItemPrice(
 		return nil, 0, false, fmt.Errorf("failed to update meal selection total price: %w", err)
 	}
 
-	// Option B: Local shopping list price edits DO NOT automatically insert into ingredient_price_log.
-	// If user explicitly checked "Laporkan ke Pantau Harga Komunitas", submit a pending price_submission.
+	// Option B: If user explicitly checked "Laporkan ke Pantau Harga Komunitas",
+	// submit a pending price_submission for community consensus (NOT direct ingredient_price_log).
 	if submitToCommunity && cityID != nil {
 		unitPriceToLog := newPrice
 		if oldPortionPrice > 0 && newPrice > 0 {
@@ -254,14 +267,13 @@ func (r *pgxShoppingListRepository) UpdateShoppingListItemPrice(
 					SELECT baseline_price FROM master_ingredients WHERE LOWER(name) = LOWER($1) LIMIT 1
 				`, ingredientName).Scan(&currentUnitPrice)
 			}
-
 			if currentUnitPrice > 0 {
 				ratio := float64(newPrice) / float64(oldPortionPrice)
 				unitPriceToLog = int(math.Round(float64(currentUnitPrice) * ratio))
 			}
 		}
 
-		// Find matching active price_watch_item ID if available
+		// Find matching active price_watch_item
 		var watchItemID int
 		errWatchItem := tx.QueryRow(ctx, `
 			SELECT pwi.id
@@ -272,21 +284,20 @@ func (r *pgxShoppingListRepository) UpdateShoppingListItemPrice(
 		`, ingredientName).Scan(&watchItemID)
 
 		if errWatchItem == nil && watchItemID > 0 {
-			// Submit pending price_submission for consensus validation
-			insertSubQuery := `
+			_, errInsert := tx.Exec(ctx, `
 				INSERT INTO price_submissions (watch_item_id, user_id, city_id, submitted_price, status, created_at)
 				VALUES ($1, $2, $3, $4, 'pending', NOW())
-			`
-			_, errInsert := tx.Exec(ctx, insertSubQuery, watchItemID, userID, *cityID, unitPriceToLog)
+			`, watchItemID, userID, *cityID, unitPriceToLog)
 			if errInsert == nil {
 				actuallySubmitted = true
 			}
 		}
 	}
 
-	if err := tx.Commit(ctx); err != nil {
+	if err = tx.Commit(ctx); err != nil {
 		return nil, 0, false, fmt.Errorf("failed to commit price update transaction: %w", err)
 	}
 
-	return &updatedItem, newTotalEstimatedPrice, actuallySubmitted, nil
+	return updatedItem, newTotalEstimatedPrice, actuallySubmitted, nil
 }
+
