@@ -92,8 +92,10 @@ PATCH /admin/subscription-plans/:id     (ubah harga/features tanpa redeploy)
 POST  /admin/coupons
 PATCH /admin/coupons/:id
 
-GET   /admin/ai-provider-config
-PATCH /admin/ai-provider-config/:id     (switch provider aktif)
+GET   /admin/ai/configs
+POST  /admin/ai/configs/select
+  body: { "provider_name": "groq" }
+  → switch active AI provider (openai | groq | gemini | deepseek)
 ```
 
 ## Format Response Standar
